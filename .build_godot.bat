@@ -21,7 +21,7 @@ if %errorlevel% neq 0 (
 
 REM ===== Web export template =====
 call C:\Users\Olie\emsdk\emsdk_env.bat
-scons platform=web profile=custom_template.py
+scons platform=web target=template_release editor=no threads=no debug_symbols=no optimize=size lto=none num_jobs=8 production=yes profile=custom_template.py
 if %errorlevel% neq 0 (
     echo [ERROR] Web template build failed.
     pause & exit /b %errorlevel%
@@ -30,7 +30,7 @@ echo Copying web template...
 xcopy /Y "%GODOT_BIN%\godot.web.template_release.wasm32.nothreads.*" "%TEMPLATES%\"
 
 REM ===== Linux export template (WSL) =====
-wsl bash -lc "cd /mnt/c/Users/Olie/Desktop/godot && scons platform=linuxbsd target=linuxbsd editor=no threads=yes debug_symbols=no optimize=speed lto=full production=yes num_jobs=8"
+wsl bash -lc "cd /mnt/c/Users/Olie/Desktop/godot && scons platform=linuxbsd target=template_release editor=no threads=yes debug_symbols=no optimize=speed lto=full production=yes num_jobs=8 profile=custom_template.py"
 if %errorlevel% neq 0 (
     echo [ERROR] Linux template build failed.
     pause & exit /b %errorlevel%
