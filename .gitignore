@@ -1,9 +1,13 @@
 # Ignore everything
 *
 
+# Allow modules folder to be traversed
+!modules/
+modules/*
+
 # Except folders starting with your prefix
 !modules/_*/
 !modules/_*/**
 
 # And the build script
-!build_godot.bat
+!.build_godot.bat
