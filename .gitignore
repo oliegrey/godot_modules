@@ -1,0 +1,9 @@
+# Ignore everything
+*
+
+# Except folders starting with your prefix
+!modules/_*/
+!modules/_*/**
+
+# And the build script
+!build_godot.bat
