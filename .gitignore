@@ -1,13 +1,74 @@
-# Ignore everything
+# Ignore everything by default
 *
 
-# Allow modules folder to be traversed
+# Don't ignore the modules folder itself
 !modules/
-modules/*
 
-# Except folders starting with your prefix
-!modules/_*/
-!modules/_*/**
+# Don't ignore directories inside modules (so git can traverse into them)
+!modules/**/
+
+# Inside modules, keep only .cpp and .h files (any depth)
+!modules/**/*.cpp
+!modules/**/*.h
+
+# But fully ignore these specific subfolders (overrides the above)
+modules/astcenc/**
+modules/basis_universal/**
+modules/bcdec/**
+modules/betsy/**
+modules/bmp/**
+modules/camera/**
+modules/csg/**
+modules/cvtt/**
+modules/dds/**
+modules/enet/**
+modules/etcpak/**
+modules/fbx/**
+modules/freetype/**
+modules/gdscript/**
+modules/glslang/**
+modules/gltf/**
+modules/godot_physics_2d/**
+modules/godot_physics_3d/**
+modules/gridmap/**
+modules/hdr/**
+modules/interactive_music/**
+modules/jolt_physics/**
+modules/jpg/**
+modules/jsonrpc/**
+modules/ktx/**
+modules/lightmapper_rd/**
+modules/mbedtls/**
+modules/meshoptimizer/**
+modules/minimp3/**
+modules/mobile_vr/**
+modules/mono/**
+modules/msdfgen/**
+modules/multiplayer/**
+modules/navigation/**
+modules/noise/**
+modules/ogg/**
+modules/openxr/**
+modules/raycast/**
+modules/regex/**
+modules/svg/**
+modules/text_server_adv/**
+modules/text_server_fb/**
+modules/tga/**
+modules/theora/**
+modules/tinyexr/**
+modules/upnp/**
+modules/vhacd/**
+modules/vorbis/**
+modules/webp/**
+modules/webrtc/**
+modules/websocket/**
+modules/webxr/**
+modules/xatlas_unwrap/**
+modules/zip/**
 
 # And the build script
 !.build_godot.bat
+modules/modules_enabled.gen.h
+modules/register_module_types.gen.cpp
+modules/register_module_types.h
