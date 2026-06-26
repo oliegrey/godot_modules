@@ -10,6 +10,8 @@
 # Inside modules, keep only .cpp and .h files (any depth)
 !modules/**/*.cpp
 !modules/**/*.h
+!modules/**/SCsub
+!modules/**/*.py
 
 # But fully ignore these specific subfolders (overrides the above)
 modules/astcenc/**
@@ -69,6 +71,8 @@ modules/zip/**
 
 # And the build script
 !.build_godot.bat
+
 modules/modules_enabled.gen.h
 modules/register_module_types.gen.cpp
 modules/register_module_types.h
+modules/SCsub
