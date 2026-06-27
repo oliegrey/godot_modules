@@ -6,7 +6,7 @@ class SubgridProbe : public RefCounted {
 	GDCLASS(SubgridProbe, RefCounted);
 
 public:
-	enum class Sort { DESCENDING, ASCENDING };
+	enum Sort { DESCENDING, ASCENDING };
 
 private:
 	Vector2i m_seg_grid_size;
@@ -37,7 +37,7 @@ public:
 		Object *generative_occupancy,
 		int lifetime_cell_count,
 		int max_occupancy_delta,
-		Sort sort = Sort::DESCENDING
+		int sort = static_cast<int>(Sort::DESCENDING)
 	);
 	void reset_choose_cells();
 };

@@ -9,10 +9,10 @@ void SubgridProbe::_bind_methods() {
 	);
 
 	ClassDB::bind_integer_constant(
-		"SubgridProbe", "Sort", "DESCENDING", static_cast<int>(Sort::DESCENDING)
+		"SubgridProbe", "Sort", "DESCENDING", Sort::DESCENDING
 	);
 	ClassDB::bind_integer_constant(
-		"SubgridProbe", "Sort", "ASCENDING", static_cast<int>(Sort::ASCENDING)
+		"SubgridProbe", "Sort", "ASCENDING", Sort::ASCENDING
 	);
 
 	ClassDB::bind_method(
@@ -84,7 +84,7 @@ void SubgridProbe::advance_bucketing(int cell_i, int count) {
 	}
 }
 
-void SubgridProbe::advance_gpos_bucketing(Vector2i gpos, int count = 1) {
+void SubgridProbe::advance_gpos_bucketing(Vector2i gpos, int count) {
 	Vector2i snapped_gpos{ (gpos / m_grid_size) * m_grid_size };
 	const Vector2i max{ m_seg_grid_size - m_grid_size };
 	snapped_gpos = MIN(snapped_gpos, max);
@@ -97,7 +97,7 @@ void SubgridProbe::choose_cells(
 	Object* bit_occupancy,
 	int lifetime_cell_count,
 	int max_occupancy_delta,
-	Sort sort
+	int sort
 ) {
 	RandomNumberGenerator *_rng = Object::cast_to<RandomNumberGenerator>(rng);
 	BitGrid2D *_bit_occupancy = Object::cast_to<BitGrid2D>(bit_occupancy);
@@ -113,7 +113,7 @@ void SubgridProbe::choose_cells(
 
 		int i{ 0 };
 		for (int subgrid_i : bucket) {
-			int j{ _rng->randi() % (i + 1) };
+			int j{ static_cast<int>(_rng->randi()) % (i + 1) };
 			shuffled_subgrids[i] = shuffled_subgrids[j];
 			shuffled_subgrids[j] = subgrid_i;
 			i += 1;
@@ -131,7 +131,7 @@ void SubgridProbe::choose_cells(
 				}
 
 				int rand_i{
-					subgrid_cell_i + _rng->randi() %
+					subgrid_cell_i + static_cast<int>(_rng->randi()) %
 					(m_cell_count - subgrid_cell_i)
 				};
 				int chosen_cell_i{ m_possible_subgrid_cells[rand_i] };

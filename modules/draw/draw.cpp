@@ -22,7 +22,7 @@ Ref<Draw> Draw::create(
 
 	ERR_FAIL_COND_V_MSG(_layers.is_empty(), Ref<Draw>(), "layers is empty");
 	ERR_FAIL_COND_V_MSG(_layer_configs.is_empty(), Ref<Draw>(), "layer_configs is empty");
-	ERR_FAIL_COND_V_MSG(_grid_size.x > 0 && _grid_size.y > 0, Ref<Draw>(), "_grid_size area equals zero");
+	ERR_FAIL_COND_V_MSG(_grid_size.x <= 0 && _grid_size.y <= 0, Ref<Draw>(), "_grid_size area equals zero");
 
 	for (int i = 0; i < _layers.size(); i++) {
 		draw->layers.push_back(Object::cast_to<TileMapLayer>(_layers[i]));

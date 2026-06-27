@@ -7,7 +7,7 @@ set EDITOR_INSTALL=C:\Program Files\Godot
 
 REM ===== Windows editor =====
 cd C:\Users\Olie\Desktop\godot
-scons platform=windows target=editor profile=custom_editor.py num_jobs=8
+scons platform=windows target=editor profile=custom_editor.py -j8
 if %errorlevel% neq 0 (
     echo [ERROR] Windows editor build failed.
     pause & exit /b %errorlevel%
@@ -21,7 +21,7 @@ if %errorlevel% neq 0 (
 
 REM ===== Web export template =====
 call C:\Users\Olie\emsdk\emsdk_env.bat
-scons platform=web target=template_release editor=no threads=no debug_symbols=no optimize=size lto=none num_jobs=8 production=yes profile=custom_template.py emcc_extra_flags="-s EXPORTED_FUNCTIONS=['_main','_malloc','_free','_realloc']"
+scons platform=web target=template_release editor=no threads=no debug_symbols=no optimize=size lto=none -j8 production=yes profile=custom_template.py emcc_extra_flags="-s EXPORTED_FUNCTIONS=['_main','_malloc','_free','_realloc']"
 
 if %errorlevel% neq 0 (
     echo [ERROR] Web template build failed.
