@@ -4,6 +4,8 @@ void BitGrid2D::_bind_methods() {
 	ClassDB::bind_static_method(
 			"BitGrid2D", D_METHOD("create", "grid_size"), &BitGrid2D::create
 	);
+	ClassDB::bind_method(D_METHOD("clear"), &BitGrid2D::clear);
+
 	ClassDB::bind_method(
 		D_METHOD("is_gpos_set", "gpos"), &BitGrid2D::is_gpos_set
 	);

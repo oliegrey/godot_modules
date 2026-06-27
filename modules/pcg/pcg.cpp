@@ -6,11 +6,13 @@ void PCG::_bind_methods() {
 		&PCG::create
 	);
 
+	ClassDB::bind_method(D_METHOD("resize_drawn_indexes"), &PCG::resize_drawn_indexes);
 	ClassDB::bind_method(D_METHOD("get_generative_occupancy"), &PCG::get_generative_occupancy);
 	ClassDB::bind_method(D_METHOD("get_tile_data"), &PCG::get_tile_data);
 	ClassDB::bind_method(D_METHOD("get_drawn_indexes"), &PCG::get_drawn_indexes);
 	ClassDB::bind_method(D_METHOD("get_drawn_indexes_i"), &PCG::get_drawn_indexes_i);
 	ClassDB::bind_method(D_METHOD("get_used_cell_count"), &PCG::get_used_cell_count);
+	ClassDB::bind_method(D_METHOD("clear_occupancy"), &PCG::clear_occupancy);
 
 	ClassDB::bind_method(
 		D_METHOD(
