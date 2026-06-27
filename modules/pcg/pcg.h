@@ -50,15 +50,15 @@ public:
 		bool add_occupancy = true
 	);
 	void add_gpos_tiles(
-		PackedInt32Array tile_indexes,
 		PackedInt32Array layer_offsets,
+		PackedInt32Array tile_indexes,
 		Vector2i seg_gpos,
 		bool add_occupancy = true
 	);
 
 	void add_area(
-		PackedInt32Array tile_indexes,
 		PackedInt32Array layer_offsets,
+		PackedInt32Array tile_indexes,
 		Vector2i seg_gpos,
 		Vector2i g_size,
 		bool add_occupancy = true

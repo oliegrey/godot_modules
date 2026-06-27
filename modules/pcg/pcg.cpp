@@ -45,7 +45,7 @@ void PCG::add_generative_occupancy(int cell_i) {
 
 void PCG::add_drawn_index(int layer_cell_i, Vector2i seg_gpos) {
 	Vector2i w_gpos{ to_world(seg_gpos) };
-	drawn_indexes.set(
+	drawn_indexes.set( // TileMapLayer is 2 byte coordinates
 		layer_cell_i | w_gpos.x << 16 | static_cast<int64_t>(w_gpos.y) << 32, drawn_indexes_i
 	);
 	drawn_indexes_i += 1;
@@ -97,7 +97,7 @@ void PCG::add_area(
 		for (int y{ 0 }; y < g_size.y; ++y) {
 			for (int x{ 0 }; x < g_size.x; ++x) {
 				const Vector2i gpos{ seg_gpos + Vector2i(x, y) };
-				add_gpos_tile(tile_i, layer_offset, gpos, add_occupancy);
+				add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
 			}
 		}
 	}
