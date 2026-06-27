@@ -1,6 +1,9 @@
 #include "bit_grid_2d.h"
 
 void BitGrid2D::_bind_methods() {
+	ClassDB::bind_static_method(
+			"BitGrid2D", D_METHOD("create", "grid_size"), &BitGrid2D::create
+	);
 	ClassDB::bind_method(
 		D_METHOD("is_gpos_set", "gpos"), &BitGrid2D::is_gpos_set
 	);
@@ -25,24 +28,34 @@ void BitGrid2D::_bind_methods() {
 	ClassDB::bind_method(
 		D_METHOD("is_area_free", "origin", "size"), &BitGrid2D::is_area_free
 	);
-
+	
 	ClassDB::bind_method(
-			D_METHOD("set_grid_size", "grid_size"), &BitGrid2D::set_grid_size);
-	ClassDB::bind_method(
-			D_METHOD("get_grid_size"), &BitGrid2D::get_grid_size);
+			D_METHOD("get_grid_size"), &BitGrid2D::get_grid_size
+	);
 	ADD_PROPERTY(
 		PropertyInfo(Variant::VECTOR2I, "grid_size"),
-		"set_grid_size", "get_grid_size"
+		"get_grid_size", ""
 	);
 	
 	ClassDB::bind_method(
-			D_METHOD("set_bitmap", "bitmap"), &BitGrid2D::set_bitmap);
+			D_METHOD("set_bitmap", "bitmap"), &BitGrid2D::set_bitmap
+	);
 	ClassDB::bind_method(
-			D_METHOD("get_bitmap"), &BitGrid2D::get_bitmap);
+			D_METHOD("get_bitmap"), &BitGrid2D::get_bitmap
+	);
 	ADD_PROPERTY(
 		PropertyInfo(Variant::PACKED_BYTE_ARRAY, "bitmap"),
 		"set_bitmap", "get_bitmap"
 	);
+}
+
+Ref<BitGrid2D> BitGrid2D::create(const Vector2i _grid_size) {
+	Ref<BitGrid2D> bit_grid;
+	bit_grid.instantiate();
+	bit_grid->bitmap.resize((_grid_size.x * _grid_size.y + 7) / 8);
+	bit_grid->bitmap.fill(0);
+	bit_grid->grid_size = _grid_size;
+	return bit_grid;
 }
 
 int BitGrid2D::gpos_to_cell_i(const Vector2i gpos) {
@@ -62,17 +75,14 @@ void BitGrid2D::unset_gpos(const Vector2i gpos) {
 }
 
 bool BitGrid2D::is_cell_i_set(const int cell_i) {
-	DEV_ASSERT(!bitmap.is_empty());
 	ERR_FAIL_COND_V_MSG(
 		cell_i >= bitmap.size() * 8 || cell_i < 0, true,
 		"cell_i is out of grid bounds"
 	);
-
 	return (bitmap[cell_i / 8] >> (cell_i % 8)) & 1;
 }
 
 void BitGrid2D::set_cell_i(const int cell_i) {
-	DEV_ASSERT(!bitmap.is_empty());
 	ERR_FAIL_COND_MSG(
 			cell_i < 0 || cell_i >= bitmap.size() * 8,
 		"cell_i out of grid bounds"
@@ -82,7 +92,6 @@ void BitGrid2D::set_cell_i(const int cell_i) {
 }
 
 void BitGrid2D::unset_cell_i(const int cell_i) {
-	DEV_ASSERT(!bitmap.is_empty());
 	ERR_FAIL_COND_MSG(
 		cell_i < 0 || cell_i >= bitmap.size() * 8,
 		"cell_i out of grid bounds"
@@ -92,8 +101,7 @@ void BitGrid2D::unset_cell_i(const int cell_i) {
 }
 
 void BitGrid2D::set_area(const Vector2i origin, const Vector2i size) {
-	DEV_ASSERT(!bitmap.is_empty());
-	DEV_ASSERT(size > Vector2i(0, 0))
+	ERR_FAIL_COND_MSG(size.x > 0 && size.y > 0, "provided size is zero area");
 	ERR_FAIL_COND_MSG(
 		origin < Vector2i(0, 0) || origin + size > grid_size,
 		"provided origin + size out of grid bounds"
@@ -109,8 +117,7 @@ void BitGrid2D::set_area(const Vector2i origin, const Vector2i size) {
 }
 
 bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) {
-	DEV_ASSERT(!bitmap.is_empty());
-	DEV_ASSERT(size > Vector2i(0, 0))
+	ERR_FAIL_COND_MSG(size.x > 0 && size.y > 0, "provided size is zero area");
 	ERR_FAIL_COND_V_MSG(
 		origin < Vector2i(0, 0) || origin + size > grid_size, false,
 		"provided origin + size out of grid bounds"

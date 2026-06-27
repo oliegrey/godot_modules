@@ -8,7 +8,7 @@ void initialize_bit_grid_2d_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 
-	ClassDB::register_class<BitGrid2D>();
+	ClassDB::register_abstract_class<BitGrid2D>();
 }
 
 void uninitialize_bit_grid_2d_module(ModuleInitializationLevel p_level) {

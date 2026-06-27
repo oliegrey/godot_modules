@@ -16,15 +16,12 @@ protected:
 	static void _bind_methods();
 
 public:
-	void set_grid_size(const Vector2i _grid_size) {
-		bitmap.resize((_grid_size.x * _grid_size.y + 7) / 8);
-		bitmap.fill(0);
-		grid_size = _grid_size;
-	}
-	Vector2i get_grid_size() const { return grid_size; }
+	static Ref<BitGrid2D> create(const Vector2i _grid_size);
 
+	Vector2i get_grid_size() const { return grid_size; }
 	void set_bitmap(const PackedByteArray &_bitmap) { bitmap = _bitmap; }
 	PackedByteArray get_bitmap() const { return bitmap; }
+	void fill() { bitmap.fill(255); }
 	
 	bool is_gpos_set(const Vector2i gpos);
 	void set_gpos(const Vector2i gpos);

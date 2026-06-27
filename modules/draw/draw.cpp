@@ -1,36 +1,43 @@
 #include "draw.h"
 
 void Draw::_bind_methods() {
+	ClassDB::bind_static_method(
+		"Draw", D_METHOD("create", "layers", "layer_configs", "grid_size"),
+		&Draw::create
+	);
+
 	ClassDB::bind_method(
 		D_METHOD("segment", "w_seg", "drawn_indexes", "tile_data"),
 		&Draw::segment
 	);
-
-	ClassDB::bind_method(
-		D_METHOD("setup", "layers", "layer_configs", "grid_size"),
-		&Draw::setup
-	);
 }
 
-void Draw::setup(
+Ref<Draw> Draw::create(
 	const TypedArray<TileMapLayer> &_layers,
 	const TypedArray<Array> &_layer_configs,
 	const Vector2i _grid_size
 ) {
+	Ref<Draw> draw;
+	draw.instantiate();
+
+	ERR_FAIL_COND_MSG(_layers.is_empty(), "layers is empty");
+	ERR_FAIL_COND_MSG(_layer_configs.is_empty(), "layer_configs is empty");
+	ERR_FAIL_COND_MSG(_grid_size.x > 0 && _grid_size.y > 0, "_grid_size area equals zero");
+
 	for (int i = 0; i < _layers.size(); i++) {
-		layers.push_back(Object::cast_to<TileMapLayer>(_layers[i]));
+		draw->layers.push_back(Object::cast_to<TileMapLayer>(_layers[i]));
 	};
-	layer_configs = _layer_configs;
-	cell_count = _grid_size.x * _grid_size.y;
-	grid_size = _grid_size;
+	draw->layer_configs = _layer_configs;
+	draw->cell_count = _grid_size.x * _grid_size.y;
+	draw->grid_size = _grid_size;
+	return draw;
 }
 
 void Draw::segment(
 		const int64_t w_seg,
 		const PackedInt64Array &drawn_indexes,
-		const PackedByteArray &tile_data)
-{
-	ERR_FAIL_COND_MSG(layers.is_empty(), "setup likely not completed");
+		const PackedByteArray &tile_data
+) {
 	int64_t layer_i{ -1 };
 	Array layer_config{};
 	TileMapLayer *layer{ nullptr };

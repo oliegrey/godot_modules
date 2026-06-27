@@ -19,7 +19,7 @@ protected:
 	static void _bind_methods();
 
 public:
-	void setup(
+	static Ref<Draw> create(
 		const TypedArray<TileMapLayer> &_layers,
 		const TypedArray<Array> &_layer_configs,
 		const Vector2i _grid_size
