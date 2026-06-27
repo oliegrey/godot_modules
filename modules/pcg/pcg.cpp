@@ -184,9 +184,7 @@ void PCG::add_row(
 	}
 }
 
-void PCG::fill(
-	int tile_i = 255, int set_occupancy = false, int layer_offset = -1
-) {
+void PCG::fill(int tile_i, int set_occupancy, int layer_offset) {
 	tile_data.fill(tile_i);
 	if (set_occupancy) { generative_occupancy->fill(); }
 	if (!m_is_server) {

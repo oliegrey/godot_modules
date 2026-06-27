@@ -117,7 +117,9 @@ void BitGrid2D::set_area(const Vector2i origin, const Vector2i size) {
 }
 
 bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) {
-	ERR_FAIL_COND_MSG(size.x > 0 && size.y > 0, "provided size is zero area");
+	ERR_FAIL_COND_V_MSG(
+		size.x > 0 && size.y > 0, false, "provided size is zero area"
+	);
 	ERR_FAIL_COND_V_MSG(
 		origin < Vector2i(0, 0) || origin + size > grid_size, false,
 		"provided origin + size out of grid bounds"

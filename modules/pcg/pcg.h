@@ -35,7 +35,7 @@ public:
 		Vector2i m_segment_grid_size, int w_seg, bool is_server
 	);
 
-	const Ref<BitGrid2D>& get_generative_occupancy() const { return generative_occupancy; }
+	Ref<BitGrid2D> get_generative_occupancy() const { return generative_occupancy; }
 	const PackedByteArray& get_tile_data() const { return tile_data; }
 	const PackedInt64Array& get_drawn_indexes() const { return drawn_indexes; }
 	int get_drawn_indexes_i() const { return drawn_indexes_i; }
