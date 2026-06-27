@@ -6,10 +6,74 @@ void PCG::_bind_methods() {
 		&PCG::create
 	);
 
-	//ClassDB::bind_method(
-	//	D_METHOD("set_gpos_exclusive", "tile_i", "layer_offset", "seg_gpos"),
-	//	&PCG::set_layer_gpos
-	//);
+	ClassDB::bind_method(D_METHOD("get_generative_occupancy"), &PCG::get_generative_occupancy);
+	ClassDB::bind_method(D_METHOD("get_tile_data"), &PCG::get_tile_data);
+	ClassDB::bind_method(D_METHOD("get_drawn_indexes"), &PCG::get_drawn_indexes);
+	ClassDB::bind_method(D_METHOD("get_drawn_indexes_i"), &PCG::get_drawn_indexes_i);
+	ClassDB::bind_method(D_METHOD("get_used_cell_count"), &PCG::get_used_cell_count);
+
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_cell_i",
+			"layer_cell_i",
+			"cell_i",
+			"tile_i",
+			"seg_gpos",
+			"add_occupancy"
+		),
+		&PCG::add_cell_i,
+		DEFVAL(true)
+	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_gpos_tile",
+			"layer_offset",
+			"tile_i",
+			"seg_gpos",
+			"add_occupancy"
+		),
+		&PCG::add_gpos_tile,
+		DEFVAL(true)
+	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_gpos_tiles",
+			"layer_offsets",
+			"tile_indexes",
+			"seg_gpos",
+			"add_occupancy"
+		),
+		&PCG::add_gpos_tiles,
+		DEFVAL(true)
+	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_area",
+			"layer_offsets",
+			"tile_indexes",
+			"seg_gpos",
+			"g_size",
+			"add_occupancy"
+		),
+		&PCG::add_area,
+		DEFVAL(true)
+	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_row",
+			"layer_offsets",
+			"tile_indexes",
+			"seg_gpos_y",
+			"add_occupancy"
+		),
+		&PCG::add_row,
+		DEFVAL(true)
+	);
+	ClassDB::bind_method(
+		D_METHOD("fill", "tile_i", "set_occupancy", "layer_offset"),
+		&PCG::fill,
+		DEFVAL(255), DEFVAL(false), DEFVAL(-1)
+	);
 }
 
 Ref<PCG> PCG::create(Vector2i segment_grid_size, int w_seg, bool is_server) {

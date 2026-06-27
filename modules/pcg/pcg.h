@@ -35,6 +35,12 @@ public:
 		Vector2i m_segment_grid_size, int w_seg, bool is_server
 	);
 
+	const Ref<BitGrid2D>& get_generative_occupancy() const { return generative_occupancy; }
+	const PackedByteArray& get_tile_data() const { return tile_data; }
+	const PackedInt64Array& get_drawn_indexes() const { return drawn_indexes; }
+	int get_drawn_indexes_i() const { return drawn_indexes_i; }
+	int get_used_cell_count() const { return used_cell_count; }
+
 	void add_cell_i(
 		int layer_cell_i,
 		int cell_i,
@@ -49,6 +55,7 @@ public:
 		Vector2i seg_gpos,
 		bool add_occupancy = true
 	);
+
 	void add_gpos_tiles(
 		PackedInt32Array layer_offsets,
 		PackedInt32Array tile_indexes,

@@ -5,6 +5,7 @@
 class SubgridProbe : public RefCounted {
 	GDCLASS(SubgridProbe, RefCounted);
 
+public:
 	enum class Sort { DESCENDING, ASCENDING };
 
 private:
@@ -19,7 +20,7 @@ private:
 	LocalVector<int> m_possible_subgrid_cells;
 	int m_amount_chosen{ 0 };
 	LocalVector<int> m_chosen_cells_i;
-	int m_set_cell_i;
+	int m_set_cell_i{ 0 };
 
 protected:
 	static void _bind_methods();
@@ -40,3 +41,5 @@ public:
 	);
 	void reset_choose_cells();
 };
+
+VARIANT_ENUM_CAST(SubgridProbe::Sort);

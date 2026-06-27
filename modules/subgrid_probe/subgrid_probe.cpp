@@ -7,6 +7,39 @@ void SubgridProbe::_bind_methods() {
 		"SubgridProbe", D_METHOD("create", "grid_size", "segment_grid_size"),
 		&SubgridProbe::create
 	);
+
+	ClassDB::bind_integer_constant(
+		"SubgridProbe", "Sort", "DESCENDING", static_cast<int>(Sort::DESCENDING)
+	);
+	ClassDB::bind_integer_constant(
+		"SubgridProbe", "Sort", "ASCENDING", static_cast<int>(Sort::ASCENDING)
+	);
+
+	ClassDB::bind_method(
+		D_METHOD("advance_bucketing", "cell_i", "count"),
+		&SubgridProbe::advance_bucketing
+	);
+	ClassDB::bind_method(
+		D_METHOD("advance_gpos_bucketing", "gpos", "count"),
+		&SubgridProbe::advance_gpos_bucketing,
+		DEFVAL(1)
+	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"choose_cells",
+			"rng",
+			"generative_occupancy",
+			"lifetime_cell_count",
+			"max_occupancy_delta",
+			"sort"
+		),
+		&SubgridProbe::choose_cells,
+		DEFVAL(Sort::DESCENDING)
+	);
+	ClassDB::bind_method(
+		D_METHOD("reset_choose_cells"),
+		&SubgridProbe::reset_choose_cells
+	);
 }
 
 Ref<SubgridProbe> SubgridProbe::create(
@@ -15,7 +48,7 @@ Ref<SubgridProbe> SubgridProbe::create(
 	Ref<SubgridProbe> subgrid_probe;
 	subgrid_probe.instantiate();
 
-	subgrid_probe->m_seg_grid_size;
+	subgrid_probe->m_seg_grid_size = segment_grid_size;
 	subgrid_probe->m_grid_size = grid_size;
 	subgrid_probe->m_cell_count = grid_size.x * grid_size.y;
 	subgrid_probe->m_subgrids_per_axis = (segment_grid_size + grid_size - Vector2i(1, 1)) / grid_size;
@@ -32,7 +65,7 @@ Ref<SubgridProbe> SubgridProbe::create(
 		for (int x{ 0 }; x < subgrid_probe->m_subgrids_per_axis.x; ++x) {
 			int origin_x{ MIN(x * subgrid_probe->m_grid_size.x, segment_grid_size.x - grid_size.x) };
 			int origin_y{ MIN(y * subgrid_probe->m_grid_size.y, segment_grid_size.y - grid_size.y) };
-			int seg_cell_i{ origin_y * grid_size.x + origin_x };
+			int seg_cell_i{ origin_y * segment_grid_size.x + origin_x };
 			subgrid_probe->m_occupancy_buckets[0].insert(seg_cell_i);
 			subgrid_probe->m_subgrid_link.insert(seg_cell_i, 0);
 		}
@@ -72,8 +105,7 @@ void SubgridProbe::choose_cells(
 	int offset{ sort == Sort::DESCENDING ? m_descending_offset : 0 };
 
 	for (int bucket_i{ 0 }; bucket_i < m_cell_count; ++bucket_i) {
-		bucket_i = abs(offset - bucket_i);
-		HashSet<int> bucket{ m_occupancy_buckets[bucket_i] };
+		HashSet<int> bucket{ m_occupancy_buckets[abs(offset - bucket_i)] };
 		if (bucket.size() <= 0) { continue; }
 
 		LocalVector<int> shuffled_subgrids;
