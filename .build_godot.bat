@@ -7,7 +7,7 @@ set EDITOR_INSTALL=C:\Program Files\Godot
 
 REM ===== Windows editor =====
 cd C:\Users\Olie\Desktop\godot
-scons platform=windows target=editor profile=custom_editor.py -j8
+scons platform=windows target=editor debug_symbols=yes profile=custom_editor.py -j8
 if %errorlevel% neq 0 (
     echo [ERROR] Windows editor build failed.
     pause & exit /b %errorlevel%

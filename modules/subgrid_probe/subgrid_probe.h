@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/object/ref_counted.h"
+#include "core/math/random_number_generator.h"
 #include "modules/pcg/pcg.h"
 
 class SubgridProbe : public RefCounted {
@@ -34,19 +35,19 @@ public:
 	void advance_bucketing(int cell_i, int count);
 	void advance_gpos_bucketing(Vector2i gpos, int count = 1);
 	void choose_cells(
-		Object *rng,
-		Object *generative_occupancy,
+		Ref<RandomNumberGenerator> rng,
+		Ref<BitGrid2D> generative_occupancy,
 		int lifetime_cell_count,
 		int max_occupancy_delta,
 		int sort = static_cast<int>(Sort::DESCENDING)
 	);
 	void reset_choose_cells();
 	void set_rand_gpos_from_chosen_cells(
-		Ref<PCG> pcg,
-		PackedInt32Array tiles_i,
+		PackedInt32Array tile_indexes,
 		PackedInt32Array layer_offsets,
-		int count = 1,
-		Ref<SubgridProbe> advance_probe = Ref<SubgridProbe>()
+		Ref<PCG> pcg,
+		int count,
+		Ref<SubgridProbe> advance_probe
 	);
 };
 

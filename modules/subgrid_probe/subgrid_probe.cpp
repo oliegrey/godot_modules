@@ -40,6 +40,18 @@ void SubgridProbe::_bind_methods() {
 		D_METHOD("reset_choose_cells"),
 		&SubgridProbe::reset_choose_cells
 	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"set_rand_gpos_from_chosen_cells",
+			"tile_indexes",
+			"layer_offsets",
+			"pcg",
+			"count",
+			"advance_probe"
+		),
+		&SubgridProbe::set_rand_gpos_from_chosen_cells,
+		DEFVAL(1), DEFVAL(Ref<SubgridProbe>())
+	);
 }
 
 Ref<SubgridProbe> SubgridProbe::create(
@@ -75,6 +87,7 @@ Ref<SubgridProbe> SubgridProbe::create(
 }
 
 void SubgridProbe::advance_bucketing(int cell_i, int count) {
+	ERR_FAIL_COND(!m_subgrid_link.has(cell_i));
 	int prev_occupancy{ m_subgrid_link[cell_i] };
 	int occupancy{ prev_occupancy + count };
 	m_occupancy_buckets[prev_occupancy].erase(cell_i);
@@ -93,14 +106,12 @@ void SubgridProbe::advance_gpos_bucketing(Vector2i gpos, int count) {
 }
 
 void SubgridProbe::choose_cells(
-	Object* rng,
-	Object* bit_occupancy,
+	Ref<RandomNumberGenerator> rng,
+	Ref<BitGrid2D> bit_occupancy,
 	int lifetime_cell_count,
 	int max_occupancy_delta,
 	int sort
 ) {
-	RandomNumberGenerator *_rng = Object::cast_to<RandomNumberGenerator>(rng);
-	BitGrid2D *_bit_occupancy = Object::cast_to<BitGrid2D>(bit_occupancy);
 	m_chosen_cells_i.resize(lifetime_cell_count);
 	int offset{ sort == Sort::DESCENDING ? m_descending_offset : 0 };
 
@@ -113,7 +124,12 @@ void SubgridProbe::choose_cells(
 
 		int i{ 0 };
 		for (int subgrid_i : bucket) {
-			int j{ static_cast<int>(_rng->randi()) % (i + 1) };
+			int j{
+				static_cast<int>(
+					static_cast<uint32_t>(rng->randi()) %
+					static_cast<uint32_t>(i + 1)
+				)
+			};
 			shuffled_subgrids[i] = shuffled_subgrids[j];
 			shuffled_subgrids[j] = subgrid_i;
 			i += 1;
@@ -131,8 +147,10 @@ void SubgridProbe::choose_cells(
 				}
 
 				int rand_i{
-					subgrid_cell_i + static_cast<int>(_rng->randi()) %
-					(m_cell_count - subgrid_cell_i)
+					subgrid_cell_i + static_cast<int>(
+						static_cast<uint32_t>(rng->randi()) %
+						static_cast<uint32_t>(m_cell_count - subgrid_cell_i)
+					)
 				};
 				int chosen_cell_i{ m_possible_subgrid_cells[rand_i] };
 				m_possible_subgrid_cells[rand_i] = m_possible_subgrid_cells[subgrid_cell_i];
@@ -143,7 +161,7 @@ void SubgridProbe::choose_cells(
 					(chosen_cell_i / m_grid_size.x * m_seg_grid_size.x) +
 					(chosen_cell_i % m_grid_size.x)
 				};
-				if (_bit_occupancy->is_cell_i_set(seg_cell_i)) {
+				if (bit_occupancy->is_cell_i_set(seg_cell_i)) {
 					continue;
 				}
 
@@ -170,11 +188,31 @@ void SubgridProbe::reset_choose_cells() {
 }
 
 void SubgridProbe::set_rand_gpos_from_chosen_cells(
-	Ref<PCG> pcg,
-	PackedInt32Array tiles_i,
+	PackedInt32Array tile_indexes,
 	PackedInt32Array layer_offsets,
+	Ref<PCG> pcg,
 	int count,
 	Ref<SubgridProbe> advance_probe
 ) {
-	
+	ERR_FAIL_COND(tile_indexes.size() != layer_offsets.size());
+	for (int j{ 0 }; j < tile_indexes.size(); ++j) {
+		const int tile_i{ tile_indexes[j] };
+		const int layer_offset{ layer_offsets[j] };
+
+		for (int i{ 0 }; i < count; ++i) {
+			int seg_cell_i{ m_chosen_cells_i[m_set_cell_i + i] };
+			Vector2i seg_gpos{
+				seg_cell_i % m_seg_grid_size.x,
+				seg_cell_i / m_seg_grid_size.x
+			};
+
+			pcg->add_gpos_tile(layer_offset, tile_i, seg_gpos);
+
+			if (advance_probe.is_valid()) {
+				advance_probe->advance_gpos_bucketing(seg_gpos);
+			}
+		}
+	}
+
+	m_set_cell_i += count;
 }
