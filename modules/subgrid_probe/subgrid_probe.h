@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/object/ref_counted.h"
+#include "modules/pcg/pcg.h"
 
 class SubgridProbe : public RefCounted {
 	GDCLASS(SubgridProbe, RefCounted);
@@ -40,6 +41,13 @@ public:
 		int sort = static_cast<int>(Sort::DESCENDING)
 	);
 	void reset_choose_cells();
+	void set_rand_gpos_from_chosen_cells(
+		Ref<PCG> pcg,
+		PackedInt32Array tiles_i,
+		PackedInt32Array layer_offsets,
+		int count = 1,
+		Ref<SubgridProbe> advance_probe = Ref<SubgridProbe>()
+	);
 };
 
 VARIANT_ENUM_CAST(SubgridProbe::Sort);

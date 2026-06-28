@@ -76,14 +76,32 @@ void PCG::_bind_methods() {
 		&PCG::fill,
 		DEFVAL(255), DEFVAL(false), DEFVAL(-1)
 	);
+
+	ClassDB::bind_method(
+		D_METHOD("fill_unoccupied", "tile_i", "set_occupancy", "layer_offset"),
+		&PCG::fill_unoccupied,
+		DEFVAL(255), DEFVAL(false), DEFVAL(-1)
+	);
 }
 
-Ref<PCG> PCG::create(Vector2i segment_grid_size, int w_seg, bool is_server) {
+Ref<PCG> PCG::create(
+	Vector2i segment_grid_size,
+	int w_seg,
+	int layer_count,
+	bool is_server
+) {
 	Ref<PCG> pcg;
 	pcg.instantiate();
 	pcg->m_seg_grid_size = segment_grid_size;
-	pcg->m_w_seg_y = w_seg * segment_grid_size.x;
+	pcg->m_w_seg_y = w_seg * segment_grid_size.y;
 	pcg->m_is_server = is_server;
+
+	pcg->generative_occupancy = BitGrid2D::create(segment_grid_size);
+	int cell_count = segment_grid_size.x * segment_grid_size.y;
+	pcg->tile_data.resize(layer_count * cell_count);
+	pcg->tile_data.fill(255); // EMPTY_I
+	pcg->drawn_indexes.resize(cell_count * layer_count);
+	pcg->drawn_indexes.fill(-1);
 	return pcg;
 }
 
@@ -112,7 +130,7 @@ void PCG::add_generative_occupancy(int cell_i) {
 void PCG::add_drawn_index(int layer_cell_i, Vector2i seg_gpos) {
 	Vector2i w_gpos{ to_world(seg_gpos) };
 	drawn_indexes.set( // TileMapLayer is 2 byte coordinates
-		layer_cell_i | w_gpos.x << 16 | static_cast<int64_t>(w_gpos.y) << 32, drawn_indexes_i
+			drawn_indexes_i, layer_cell_i | w_gpos.x << 16 | static_cast<int64_t>(w_gpos.y) << 32
 	);
 	drawn_indexes_i += 1;
 }
@@ -186,9 +204,9 @@ void PCG::add_row(
 	}
 }
 
-void PCG::fill(int tile_i, int set_occupancy, int layer_offset) {
+void PCG::fill(int tile_i, bool add_occupancy, int layer_offset) {
 	tile_data.fill(tile_i);
-	if (set_occupancy) { generative_occupancy->fill(); }
+	if (add_occupancy) { generative_occupancy->fill(); }
 	if (!m_is_server) {
 		ERR_FAIL_COND_MSG(layer_offset < 0, "layer_offset is required for client");
 		for (int x{ 0 }; x < m_seg_grid_size.x; ++x) {
@@ -196,6 +214,17 @@ void PCG::fill(int tile_i, int set_occupancy, int layer_offset) {
 				Vector2i gpos{ Vector2i(x, y) };
 				int layer_cell_i{ get_layer_cell_i(layer_offset, gpos) };
 				add_drawn_index(layer_cell_i, gpos);
+			}
+		}
+	}
+}
+
+void PCG::fill_unoccupied(int tile_i, bool add_occupancy, int layer_offset) {
+	for (int x{ 0 }; x < m_seg_grid_size.x; ++x) {
+		for (int y{ 0 }; y < m_seg_grid_size.y; ++y) {
+			Vector2i gpos{ Vector2i(x, y) };
+			if (!generative_occupancy->is_gpos_set(gpos)) {
+				add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
 			}
 		}
 	}

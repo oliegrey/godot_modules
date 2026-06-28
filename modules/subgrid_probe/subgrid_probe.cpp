@@ -168,3 +168,13 @@ void SubgridProbe::reset_choose_cells() {
 		m_possible_subgrid_cells.push_back(cell_i);
 	}
 }
+
+void SubgridProbe::set_rand_gpos_from_chosen_cells(
+	Ref<PCG> pcg,
+	PackedInt32Array tiles_i,
+	PackedInt32Array layer_offsets,
+	int count,
+	Ref<SubgridProbe> advance_probe
+) {
+	
+}

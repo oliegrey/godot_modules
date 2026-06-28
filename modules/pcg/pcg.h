@@ -32,7 +32,10 @@ protected:
 
 public:
 	static Ref<PCG> create(
-		Vector2i m_segment_grid_size, int w_seg, bool is_server
+		Vector2i m_segment_grid_size,
+		int w_seg,
+		int layer_count,
+		bool is_server
 	);
 
 	Ref<BitGrid2D> get_generative_occupancy() const { return generative_occupancy; }
@@ -86,7 +89,11 @@ public:
 	);
 
 	void fill(
-		int tile_i = 255, int set_occupancy = false, int layer_offset = -1
+		int tile_i = 255, bool add_occupancy = false, int layer_offset = -1
+	);
+
+	void fill_unoccupied(
+		int tile_i = 255, bool add_occupancy = false, int layer_offset = -1
 	);
 
 	void clear_occupancy() const { generative_occupancy->clear(); }
