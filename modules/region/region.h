@@ -11,7 +11,7 @@ public:
 	enum Direction { NONE = -1, UP, DOWN, LEFT, RIGHT };
 
 private:
-	static Vector2i m_max_g_size;
+	inline static Vector2i m_max_g_size;
 
 	// attachment direction [0 - 3]
 	// -> quad size flattened [(0, 0), ... (max, 0), ... (max, max)]
@@ -19,15 +19,15 @@ private:
 	// to find a region that fits after a failed test with free space
 	// order quad size from smallest to largest so we can find the next lowest
 	// region vector ordered by min world segment, can iterate to find the max
-	static std::array<LocalVector<LocalVector<Ref<Region>>>, 4> m_region_tree;
+	inline static std::array<LocalVector<LocalVector<Ref<Region>>>, 4> m_region_tree;
 
 	// attachment direction (already placed regions perspective) [0 - 3] -> region
 	// to get a random region to test in a free direction
 	// region vector ordered by min world segment, can iterate to find the max
-	static std::array<LocalVector<Ref<Region>>, 4> m_dir_to_region;
+	inline static std::array<LocalVector<Ref<Region>>, 4> m_dir_to_region;
 
 	// starting regions to build off of
-	static LocalVector<Ref<Region>> m_primary_regions;
+	inline static LocalVector<Ref<Region>> m_primary_regions;
 
 	int m_flat_size_i;
 
@@ -48,7 +48,7 @@ private:
 			case Direction::DOWN:     return Direction::UP;
 			case Direction::LEFT:     return Direction::RIGHT;
 			case Direction::RIGHT:    return Direction::LEFT;
-			case Direction::NONE:     return Direction::NONE;
+			default:                  return Direction::NONE;
 		}
 	}
 
@@ -68,9 +68,12 @@ public:
 		int _threshold
 	);
 
-	void finalize();
+	static void finalize();
 
-	PackedFloat32Array get_normalized_weights(
+	static PackedFloat32Array get_normalized_weights(
 		const LocalVector<Ref<Region>> &regions, const int regions_max
 	);
 };
+
+VARIANT_ENUM_CAST(Region::Slot)
+VARIANT_ENUM_CAST(Region::Direction)

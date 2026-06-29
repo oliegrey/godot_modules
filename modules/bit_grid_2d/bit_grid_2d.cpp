@@ -1,5 +1,26 @@
 #include "bit_grid_2d.h"
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+static inline int ctz32(uint32_t x) {
+	unsigned long index;
+	_BitScanForward(&index, x);
+	return static_cast<int>(index);
+}
+static inline int ctz64(uint64_t x) {
+	unsigned long index;
+	_BitScanForward64(&index, x);
+	return static_cast<int>(index);
+}
+#else
+static inline int ctz32(uint32_t x) {
+	return __builtin_ctz(x);
+}
+static inline int ctz64(uint64_t x) {
+	return __builtin_ctzll(x);
+}
+#endif
+
 void BitGrid2D::_bind_methods() {
 	ClassDB::bind_static_method(
 			"BitGrid2D", D_METHOD("create", "grid_size"), &BitGrid2D::create
@@ -29,6 +50,14 @@ void BitGrid2D::_bind_methods() {
 	);
 	ClassDB::bind_method(
 		D_METHOD("is_area_free", "origin", "size"), &BitGrid2D::is_area_free
+	);
+	ClassDB::bind_method(
+		D_METHOD("find_cell_in_state", "start_cell", "end_cell", "get_unset"),
+		&BitGrid2D::find_cell_in_state
+	);
+	ClassDB::bind_method(
+		D_METHOD("find_area_in_state", "size", "start_cell", "get_unset"),
+			&BitGrid2D::find_area_in_state
 	);
 	
 	ClassDB::bind_method(
@@ -142,7 +171,7 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 	return true;
 }
 
-int BitGrid2D::find_cell_state(
+int BitGrid2D::find_cell_in_state(
 	int start_cell, int end_cell, bool get_unset
 ) const {
 	const uint8_t *data = bitmap.ptr();
@@ -158,13 +187,13 @@ int BitGrid2D::find_cell_state(
 	int i{ start_byte };
 
 	if (start_bit > 0) {
-		uint8_t test_byte{ get_unset ? ~data[i] : data[i] };
-		uint8_t mask{ 0xFF << start_bit };
+		uint8_t test_byte{ static_cast<uint8_t>(get_unset ? ~data[i] : data[i]) };
+		uint8_t mask{ static_cast<uint8_t>(0xFF << start_bit) };
 
 		test_byte &= mask;
 
 		if (test_byte != 0) {
-			return i * 8 + __builtin_ctz(test_byte);
+			return i * 8 + ctz32(test_byte);
 		}
 		++i;
 	}
@@ -183,15 +212,15 @@ int BitGrid2D::find_cell_state(
 			}
 
 			if (chunk != 0) {
-				return i * 8 + __builtin_ctzll(chunk);
+				return i * 8 + ctz64(chunk);
 			}
 		}
 
 		for (; i < it_end_byte; i++) {
-			uint8_t test_byte{ get_unset ? ~data[i] : data[i] };
+			uint8_t test_byte{ static_cast<uint8_t>(get_unset ? ~data[i] : data[i]) };
 
 			if (test_byte != 0) {
-				return i * 8 + __builtin_ctz(test_byte);
+				return i * 8 + ctz32(test_byte);
 			}
 		}
 
@@ -202,20 +231,18 @@ int BitGrid2D::find_cell_state(
 	}
 
 	if (end_bit > 0) {
-		uint8_t test_byte{ get_unset ? ~data[i] : data[i] };
-		uint8_t mask{ 0xFF >> (8 - end_bit) };
+		uint8_t test_byte{ static_cast<uint8_t>(get_unset ? ~data[i] : data[i]) };
+		uint8_t mask{ static_cast<uint8_t>(0xFF >> (8 - end_bit)) };
 		test_byte &= mask;
 		if (test_byte != 0) {
-			return i * 8 + __builtin_ctz(test_byte);
+			return i * 8 + ctz32(test_byte);
 		}
 	}
 
 	return -1;
 }
 
-int BitGrid2D::find_area_state(
-	Vector2i size, int start_cell, bool wrap, bool get_unset
-) {
+int BitGrid2D::find_area_in_state(Vector2i size, int start_cell, bool get_unset) {
 	ERR_FAIL_COND_V_MSG(
 		size.x <= 0 || size.y <= 0, -1,
 		"area of size provided is smaller or equal to zero"
@@ -228,4 +255,53 @@ int BitGrid2D::find_area_state(
 		"cell_offset out of bounds"
 	);
 
+	int cell_i{ start_cell };
+
+	int i{ 0 };
+
+	while (i < cell_count) {
+
+		cell_i = find_cell_in_state(cell_i, start_cell, get_unset);
+
+		if (cell_i == -1) { return -1; } // no possible areas left
+
+		int x{ find_is_area_state(cell_i, size, get_unset) };
+
+		if (x == -1) { return cell_i; } // area found
+
+		i += x;
+
+		cell_i = (start_cell + i) % cell_count;
+	}
+
+	return -1;
+}
+
+int BitGrid2D::find_is_area_state(
+	int start_cell_i, Vector2i size, bool get_unset
+) const {
+	if (
+		(start_cell_i % grid_size.x) + size.x > grid_size.x ||
+		start_cell_i + size.x + size.y * grid_size.x > cell_count
+	) {
+		return -1;
+	}
+
+	int max_x{ 1 };
+	for (int y{ 0 }; y < size.y; ++y) {
+		for (int x{ static_cast<int>(y == 0) }; x < size.x; ++x) { // we know the first cell is set/unset
+			int test_cell_i{ start_cell_i + x + y * grid_size.x };
+			int bit_pos{ test_cell_i % 8 };
+
+			uint8_t test_byte{ bitmap[test_cell_i / 8] };
+			int test_bit{ test_byte >> bit_pos };
+
+			if (!get_unset) { test_bit = ~test_bit; }
+
+			if (test_bit & 1) { return max_x; }
+
+			max_x = MAX(max_x, x);
+		}
+	}
+	return -1;
 }

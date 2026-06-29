@@ -13,7 +13,7 @@ private:
 private:
 	int gpos_to_cell_i(const Vector2i gpos) const;
 
-	int find_cell_state(int start_cell, int end_cell, bool get_unset) const;
+	int find_is_area_state(int start_cell_i, Vector2i size, bool get_unset) const;
 
 protected:
 	static void _bind_methods();
@@ -38,11 +38,11 @@ public:
 	bool is_area_free(const Vector2i origin, const Vector2i) const;
 	void set_area(const Vector2i gpos, const Vector2i size);
 
-	int find_cell_state(
-		int start_cell = 0, bool wrap = true, bool get_unset = true
+	int find_cell_in_state(
+		int start_cell = 0, int end_cell = 0, bool get_unset = true
 	) const;
 
-	int find_area_state(
-		Vector2i size, int start_cell = 0, bool wrap = true, bool get_unset = true
+	int find_area_in_state(
+		Vector2i size, int start_cell = 0, bool get_unset = true
 	);
 };

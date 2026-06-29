@@ -61,8 +61,9 @@ Ref<Region> Region::create(
 
 	region->m_flat_size_i = _g_size.x + _g_size.y * m_max_g_size.x;
 
-	ERR_FAIL_COND_MSG(
+	ERR_FAIL_COND_V_MSG(
 		region->m_flat_size_i < m_max_g_size.x + m_max_g_size.y * m_max_g_size.x,
+		Ref<Region>(),
 		"size of region is larger than max size provided in intialization"
 	);
 
@@ -86,7 +87,7 @@ void Region::finalize() {
 			}
 		);
 
-		for (int i{ 0 }; i < m_region_tree[dir].size(); ++i) {
+		for (uint32_t i{ 0 }; i < m_region_tree[dir].size(); ++i) {
 			std::sort(
 				m_region_tree[dir][i].ptr(),
 				m_region_tree[dir][i].ptr() + m_region_tree[dir][i].size(),

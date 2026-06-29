@@ -40,9 +40,10 @@ public:
 
 	Ref<BitGrid2D> get_generative_occupancy() const { return generative_occupancy; }
 	const PackedByteArray& get_tile_data() const { return tile_data; }
-	const PackedInt64Array& get_drawn_indexes() const {
+	const PackedInt64Array &get_drawn_indexes() const {
+		static const PackedInt64Array empty;
 		ERR_FAIL_COND_V_MSG(
-			drawn_indexes.size() != drawn_indexes_i, PackedInt64Array(),
+			drawn_indexes.size() != drawn_indexes_i, empty,
 			"call resize_drawn_indexes before getting drawn_indexes"
 		);
 		return drawn_indexes;
