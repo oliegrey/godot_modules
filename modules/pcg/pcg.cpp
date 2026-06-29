@@ -99,7 +99,7 @@ Ref<PCG> PCG::create(
 	pcg->generative_occupancy = BitGrid2D::create(segment_grid_size);
 	int cell_count = segment_grid_size.x * segment_grid_size.y;
 	pcg->tile_data.resize(layer_count * cell_count);
-	pcg->tile_data.fill(255); // EMPTY_I
+	pcg->tile_data.fill(255);
 	pcg->drawn_indexes.resize(cell_count * layer_count);
 	pcg->drawn_indexes.fill(-1);
 	return pcg;

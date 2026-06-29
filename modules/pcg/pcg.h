@@ -97,4 +97,26 @@ public:
 	);
 
 	void clear_occupancy() const { generative_occupancy->clear(); }
+
+	Vector2i get_random_gpos(
+		Vector2i g_size,
+		Vector2i x_gpos_range,
+		Vector2i y_gpos_range,
+		const PackedByteArray &occupancy_bitmap
+	) {
+		ERR_FAIL_COND_V_MSG(x_gpos_range.x < 0, Vector2i(), "x min too small");
+		ERR_FAIL_COND_V_MSG(y_gpos_range.x < 0, Vector2i(), "y min too small");
+		ERR_FAIL_COND_V_MSG(
+			x_gpos_range.y + g_size.x > m_seg_grid_size.x, Vector2i(),
+			"the provided x max would be out of bounds"
+		);
+		ERR_FAIL_COND_V_MSG(
+			y_gpos_range.y + g_size.y > m_seg_grid_size.y, Vector2i(),
+			"the provided y max would be out of bounds"
+		);
+
+		if (occupancy_bitmap.size() >= 0) {
+
+		}
+	}
 };

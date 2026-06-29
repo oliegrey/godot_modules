@@ -10,7 +10,11 @@ private:
 	PackedByteArray bitmap;
 
 private:
-	int gpos_to_cell_i(const Vector2i gpos);
+	int gpos_to_cell_i(const Vector2i gpos) const;
+
+	static int bit_search_pass(
+		const uint8_t *data, int from, int to, int bit_skip, bool get_unset
+	);
 
 protected:
 	static void _bind_methods();
@@ -24,14 +28,18 @@ public:
 	void fill() { bitmap.fill(255); }
 	void clear() { bitmap.fill(0); }
 	
-	bool is_gpos_set(const Vector2i gpos);
+	bool is_gpos_set(const Vector2i gpos) const;
 	void set_gpos(const Vector2i gpos);
 	void unset_gpos(const Vector2i gpos);
 
-	bool is_cell_i_set(const int cell_i);
+	bool is_cell_i_set(const int cell_i) const;
 	void set_cell_i(const int cell_i);
 	void unset_cell_i(const int cell_i);
 
-	bool is_area_free(const Vector2i origin, const Vector2i);
+	bool is_area_free(const Vector2i origin, const Vector2i) const;
 	void set_area(const Vector2i gpos, const Vector2i size);
+
+	int get_first_unset_cell_i(
+		int cell_offset = 0, bool wrap = true, bool get_unset = true
+	) const;
 };

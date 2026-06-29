@@ -60,11 +60,11 @@ Ref<BitGrid2D> BitGrid2D::create(const Vector2i _grid_size) {
 	return bit_grid;
 }
 
-int BitGrid2D::gpos_to_cell_i(const Vector2i gpos) {
+int BitGrid2D::gpos_to_cell_i(const Vector2i gpos) const {
 	return gpos.y * grid_size.x + gpos.x;
 }
 
-bool BitGrid2D::is_gpos_set(const Vector2i gpos) {
+bool BitGrid2D::is_gpos_set(const Vector2i gpos) const {
 	return is_cell_i_set(gpos_to_cell_i(gpos));
 }
 
@@ -76,7 +76,7 @@ void BitGrid2D::unset_gpos(const Vector2i gpos) {
 	unset_cell_i(gpos_to_cell_i(gpos));
 }
 
-bool BitGrid2D::is_cell_i_set(const int cell_i) {
+bool BitGrid2D::is_cell_i_set(const int cell_i) const {
 	ERR_FAIL_COND_V_MSG(
 		cell_i >= bitmap.size() * 8 || cell_i < 0, true,
 		"cell_i is out of grid bounds"
@@ -120,7 +120,7 @@ void BitGrid2D::set_area(const Vector2i origin, const Vector2i size) {
 	}
 }
 
-bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) {
+bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 	ERR_FAIL_COND_V_MSG(
 		size.x <= 0 || size.y <= 0, false, "provided size is zero area"
 	);
@@ -139,4 +139,65 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) {
 		}
 	}
 	return true;
+}
+
+int BitGrid2D::bit_search_pass(
+		const uint8_t *data, int from, int to, int bit_skip, bool get_unset
+) {
+	int i{ from };
+
+	if (bit_skip > 0) {
+		uint8_t test_byte{ get_unset ? ~data[i] : data[i] };
+		uint8_t mask{ 0xFF << bit_skip };
+
+		test_byte &= mask;
+
+		if (test_byte != 0) {
+			return i * 8 + __builtin_ctz(test_byte);
+		}
+		++i;
+	}
+
+	if (i >= to) {
+		return -1;
+	}
+
+	for (; i + 8 <= to; i += 8) {
+		uint64_t chunk;
+		memcpy(&chunk, data + i, 8);
+		if (get_unset) {
+			chunk = ~chunk;
+		}
+
+		if (chunk != 0) {
+			return i * 8 + __builtin_ctzll(chunk);
+		}
+	}
+
+	for (; i < to; i++) {
+		uint8_t test_byte{ get_unset ? ~data[i] : data[i] };
+
+		if (test_byte != 0) {
+			return i * 8 + __builtin_ctz(test_byte);
+		}
+	}
+
+	return -1;
+}
+
+int BitGrid2D::get_first_unset_cell_i(
+	int cell_offset = 0, bool wrap = true, bool get_unset = true
+) const {
+	ERR_FAIL_COND_V_MSG(
+		cell_offset < 0 || cell_offset >= bitmap.size() * 8, -1,
+		"cell_offset out of bounds"
+	);
+	const uint8_t *data = bitmap.ptr();
+	const int byte_count{ bitmap.size() };
+	const int byte_start{ cell_offset / 8 };
+	const int bit_skip{ cell_offset % 8 };
+
+	int result_bit_pos{ bit_search_pass(data, byte_start, byte_count, bit_skip, get_unset) };
+	if (!wrap || result_bit_pos != -1) { return result_bit_pos; }
+	return bit_search_pass(data, 0, byte_start, 0, get_unset);
 }
