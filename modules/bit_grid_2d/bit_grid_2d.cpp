@@ -57,6 +57,7 @@ Ref<BitGrid2D> BitGrid2D::create(const Vector2i _grid_size) {
 	bit_grid->bitmap.resize((_grid_size.x * _grid_size.y + 7) / 8);
 	bit_grid->bitmap.fill(0);
 	bit_grid->grid_size = _grid_size;
+	bit_grid->cell_count = _grid_size.x * _grid_size.y;
 	return bit_grid;
 }
 
@@ -141,14 +142,24 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 	return true;
 }
 
-int BitGrid2D::bit_search_pass(
-		const uint8_t *data, int from, int to, int bit_skip, bool get_unset
-) {
-	int i{ from };
+int BitGrid2D::find_cell_state(
+	int start_cell, int end_cell, bool get_unset
+) const {
+	const uint8_t *data = bitmap.ptr();
 
-	if (bit_skip > 0) {
+	const int start_byte{ start_cell / 8 };
+	const int start_bit{ start_cell % 8 };
+	const int end_byte{ end_cell / 8 };
+	const int end_bit{ end_cell % 8 };
+
+	const bool wrap{ end_byte < start_byte };
+	int it_end_byte{ MAX(cell_count / 8, end_byte) };
+
+	int i{ start_byte };
+
+	if (start_bit > 0) {
 		uint8_t test_byte{ get_unset ? ~data[i] : data[i] };
-		uint8_t mask{ 0xFF << bit_skip };
+		uint8_t mask{ 0xFF << start_bit };
 
 		test_byte &= mask;
 
@@ -158,25 +169,42 @@ int BitGrid2D::bit_search_pass(
 		++i;
 	}
 
-	if (i >= to) {
+	if (i >= end_byte && !wrap) {
 		return -1;
 	}
 
-	for (; i + 8 <= to; i += 8) {
-		uint64_t chunk;
-		memcpy(&chunk, data + i, 8);
-		if (get_unset) {
-			chunk = ~chunk;
+	for (int j{ 0 }; j < static_cast<int>(wrap) + 1; ++j) {
+
+		for (; i + 8 <= it_end_byte; i += 8) {
+			uint64_t chunk;
+			memcpy(&chunk, data + i, 8);
+			if (get_unset) {
+				chunk = ~chunk;
+			}
+
+			if (chunk != 0) {
+				return i * 8 + __builtin_ctzll(chunk);
+			}
 		}
 
-		if (chunk != 0) {
-			return i * 8 + __builtin_ctzll(chunk);
+		for (; i < it_end_byte; i++) {
+			uint8_t test_byte{ get_unset ? ~data[i] : data[i] };
+
+			if (test_byte != 0) {
+				return i * 8 + __builtin_ctz(test_byte);
+			}
+		}
+
+		if (wrap) {
+			i = 0;
+			it_end_byte = end_byte;
 		}
 	}
 
-	for (; i < to; i++) {
+	if (end_bit > 0) {
 		uint8_t test_byte{ get_unset ? ~data[i] : data[i] };
-
+		uint8_t mask{ 0xFF >> (8 - end_bit) };
+		test_byte &= mask;
 		if (test_byte != 0) {
 			return i * 8 + __builtin_ctz(test_byte);
 		}
@@ -185,19 +213,19 @@ int BitGrid2D::bit_search_pass(
 	return -1;
 }
 
-int BitGrid2D::get_first_unset_cell_i(
-	int cell_offset = 0, bool wrap = true, bool get_unset = true
-) const {
+int BitGrid2D::find_area_state(
+	Vector2i size, int start_cell, bool wrap, bool get_unset
+) {
 	ERR_FAIL_COND_V_MSG(
-		cell_offset < 0 || cell_offset >= bitmap.size() * 8, -1,
+		size.x <= 0 || size.y <= 0, -1,
+		"area of size provided is smaller or equal to zero"
+	);
+	ERR_FAIL_COND_V_MSG(
+		size.x > grid_size.x || size.y > grid_size.y, -1, "size larger than grid"
+	);
+	ERR_FAIL_COND_V_MSG(
+		start_cell < 0 || start_cell >= bitmap.size() * 8, -1,
 		"cell_offset out of bounds"
 	);
-	const uint8_t *data = bitmap.ptr();
-	const int byte_count{ bitmap.size() };
-	const int byte_start{ cell_offset / 8 };
-	const int bit_skip{ cell_offset % 8 };
 
-	int result_bit_pos{ bit_search_pass(data, byte_start, byte_count, bit_skip, get_unset) };
-	if (!wrap || result_bit_pos != -1) { return result_bit_pos; }
-	return bit_search_pass(data, 0, byte_start, 0, get_unset);
 }
