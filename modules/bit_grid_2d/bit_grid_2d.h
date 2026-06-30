@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/object/ref_counted.h"
+#include "core/math/random_number_generator.h"
 
 class BitGrid2D : public RefCounted {
 	GDCLASS(BitGrid2D, RefCounted);
@@ -43,6 +44,20 @@ public:
 	) const;
 
 	int find_area_in_state(
-		Vector2i size, int start_cell = 0, bool get_unset = true
+		Vector2i size, int start_cell, int end_cell, bool get_unset = true
+	);
+
+	Vector2i find_rand_gpos_in_state(
+		Ref<RandomNumberGenerator> rng,
+		Vector2i required_size = Vector2i(1, 1),
+		bool get_unset = true
+	);
+
+	Vector2i find_rand_gpos_ranged_in_state(
+		Ref<RandomNumberGenerator> rng,
+		Vector2i search_y_range,
+		Vector2i search_x_range = Vector2i(),
+		Vector2i size = Vector2i(1, 1),
+		bool get_unset = true
 	);
 };

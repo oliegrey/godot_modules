@@ -2,11 +2,11 @@
 
 void PCG::_bind_methods() {
 	ClassDB::bind_static_method(
-		"PCG", D_METHOD("create", "segment_grid_size", "w_seg", "is_server"),
+		"PCG",
+		D_METHOD("create", "segment_grid_size", "w_seg", "layer_count", "is_server"),
 		&PCG::create
 	);
 
-	ClassDB::bind_method(D_METHOD("resize_drawn_indexes"), &PCG::resize_drawn_indexes);
 	ClassDB::bind_method(D_METHOD("get_generative_occupancy"), &PCG::get_generative_occupancy);
 	ClassDB::bind_method(D_METHOD("get_tile_data"), &PCG::get_tile_data);
 	ClassDB::bind_method(D_METHOD("get_drawn_indexes"), &PCG::get_drawn_indexes);
