@@ -23,7 +23,7 @@ static inline int ctz64(uint64_t x) {
 
 void BitGrid2D::_bind_methods() {
 	ClassDB::bind_static_method(
-			"BitGrid2D", D_METHOD("create", "grid_size"), &BitGrid2D::create
+		"BitGrid2D", D_METHOD("create", "grid_size"), &BitGrid2D::create
 	);
 	ClassDB::bind_method(D_METHOD("clear"), &BitGrid2D::clear);
 
@@ -54,12 +54,11 @@ void BitGrid2D::_bind_methods() {
 	ClassDB::bind_method(
 		D_METHOD(
 			"find_cell_in_state",
-			"start_cell",
 			"end_cell_inc",
+			"start_cell",
 			"get_unset"
 		),
 		&BitGrid2D::find_cell_in_state,
-		DEFVAL(0),
 		DEFVAL(0),
 		DEFVAL(true)
 	);
@@ -103,7 +102,7 @@ void BitGrid2D::_bind_methods() {
 	);
 	
 	ClassDB::bind_method(
-			D_METHOD("get_grid_size"), &BitGrid2D::get_grid_size
+		D_METHOD("get_grid_size"), &BitGrid2D::get_grid_size
 	);
 	ADD_PROPERTY(
 		PropertyInfo(Variant::VECTOR2I, "grid_size"),
@@ -111,10 +110,10 @@ void BitGrid2D::_bind_methods() {
 	);
 	
 	ClassDB::bind_method(
-			D_METHOD("set_bitmap", "bitmap"), &BitGrid2D::set_bitmap
+		D_METHOD("set_bitmap", "bitmap"), &BitGrid2D::set_bitmap
 	);
 	ClassDB::bind_method(
-			D_METHOD("get_bitmap"), &BitGrid2D::get_bitmap
+		D_METHOD("get_bitmap"), &BitGrid2D::get_bitmap
 	);
 	ADD_PROPERTY(
 		PropertyInfo(Variant::PACKED_BYTE_ARRAY, "bitmap"),
@@ -158,7 +157,7 @@ bool BitGrid2D::is_cell_i_set(const int cell_i) const {
 
 void BitGrid2D::set_cell_i(const int cell_i) {
 	ERR_FAIL_COND_MSG(
-			cell_i < 0 || cell_i >= bitmap.size() * 8,
+		cell_i < 0 || cell_i >= bitmap.size() * 8,
 		"cell_i out of grid bounds"
 	);
 	uint8_t *data = bitmap.ptrw();
@@ -214,7 +213,7 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 }
 
 int BitGrid2D::find_cell_in_state(
-	int start_cell, int end_cell_inc, bool get_unset
+	int end_cell_inc, int start_cell, bool get_unset
 ) const {
 	const uint8_t *data = bitmap.ptr();
 
@@ -224,7 +223,7 @@ int BitGrid2D::find_cell_in_state(
 	const int end_bit{ end_cell_inc % 8 };
 
 	const bool wrap{ end_byte < start_byte };
-	int it_end_byte{ MAX(cell_count / 8, end_byte) };
+	int it_end_byte{ MIN(cell_count / 8, end_byte) };
 
 	int i{ start_byte };
 

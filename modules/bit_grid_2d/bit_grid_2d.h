@@ -40,7 +40,7 @@ public:
 	void set_area(const Vector2i gpos, const Vector2i size);
 
 	int find_cell_in_state(
-		int start_cell = 0, int end_cell = 0, bool get_unset = true
+		int end_cell_inc, int start_cell = 0, bool get_unset = true
 	) const;
 
 	int find_area_in_state(
