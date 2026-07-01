@@ -130,7 +130,10 @@ void PCG::add_generative_occupancy(int cell_i) {
 void PCG::add_drawn_index(int layer_cell_i, Vector2i seg_gpos) {
 	Vector2i w_gpos{ to_world(seg_gpos) };
 	drawn_indexes.set( // TileMapLayer is 2 byte coordinates
-			drawn_indexes_i, layer_cell_i | w_gpos.x << 16 | static_cast<int64_t>(w_gpos.y) << 32
+		drawn_indexes_i,
+		layer_cell_i |
+		w_gpos.x << 16 |
+		static_cast<int64_t>(w_gpos.y) << 32
 	);
 	drawn_indexes_i += 1;
 }
