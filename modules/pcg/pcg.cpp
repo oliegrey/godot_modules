@@ -466,7 +466,7 @@ void PCG::add_rand(
 	Ref<SubgridProbe> advance_bucket,
 	bool add_occupancy
 ) {
-	const bool has_bucket{ advance_bucket == Ref<SubgridProbe>() };
+	const bool has_bucket{ advance_bucket != Ref<SubgridProbe>() };
 	for (int i{ 0 }; i < count; ++i) {
 		Vector2i gpos = generative_occupancy->find_rand_gpos_in_state(rng);
 		if (!generative_occupancy->is_gpos_set(gpos)) {

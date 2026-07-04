@@ -88,13 +88,16 @@ Ref<SubgridProbe> SubgridProbe::create(
 }
 
 void SubgridProbe::advance_bucketing(int cell_i, int count) {
-	ERR_FAIL_COND(!m_subgrid_link.has(cell_i));
-	int prev_occupancy{ m_subgrid_link[cell_i] };
+	HashMap<int, int>::Iterator it = m_subgrid_link.find(cell_i);
+	ERR_FAIL_COND(it == m_subgrid_link.end());
+
+	int prev_occupancy{ it->value };
 	int occupancy{ prev_occupancy + count };
+
 	m_occupancy_buckets[prev_occupancy].erase(cell_i);
 	if (occupancy < m_cell_count) {
 		m_occupancy_buckets[occupancy].insert(cell_i);
-		m_subgrid_link[cell_i] = occupancy;
+		it->value = occupancy;
 	}
 }
 
