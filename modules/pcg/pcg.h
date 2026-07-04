@@ -117,6 +117,8 @@ public:
 		bool add_occupancy = true
 	);
 
+	int randi_range_exp(Ref<RandomNumberGenerator> rng, int max, int min = 0);
+
 	void add_row(
 		PackedInt32Array layer_offsets,
 		PackedInt32Array tile_indexes,

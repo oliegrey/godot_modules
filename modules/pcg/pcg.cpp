@@ -1,6 +1,27 @@
 #include "pcg.h"
 #include "modules/subgrid_probe/subgrid_probe.h"
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+static inline int ctz32(uint32_t x) {
+	unsigned long index;
+	_BitScanForward(&index, x);
+	return static_cast<int>(index);
+}
+static inline int ctz64(uint64_t x) {
+	unsigned long index;
+	_BitScanForward64(&index, x);
+	return static_cast<int>(index);
+}
+#else
+static inline int ctz32(uint32_t x) {
+	return __builtin_ctz(x);
+}
+static inline int ctz64(uint64_t x) {
+	return __builtin_ctzll(x);
+}
+#endif
+
 void PCG::_bind_methods() {
 	ClassDB::bind_static_method(
 		"PCG",
@@ -150,6 +171,12 @@ void PCG::_bind_methods() {
 		D_METHOD("fill_unoccupied", "tile_i", "set_occupancy", "layer_offset"),
 		&PCG::fill_unoccupied,
 		DEFVAL(255), DEFVAL(false), DEFVAL(-1)
+	);
+
+	ClassDB::bind_method(
+		D_METHOD("randi_range_exp", "rng", "max", "min"),
+		&PCG::randi_range_exp,
+		DEFVAL(0)
 	);
 }
 
@@ -449,4 +476,19 @@ void PCG::add_rand(
 			}
 		}
 	}
+}
+
+int PCG::randi_range_exp(Ref<RandomNumberGenerator> rng, int max, int min) {
+	int range = max - min;
+	int n = 0;
+
+	while (rng->randf() < 0.5) {
+		n++;
+		if (n > range) {
+			n = 0;
+			break;
+		}
+	}
+
+	return min + n;
 }
