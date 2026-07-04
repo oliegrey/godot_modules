@@ -3,11 +3,14 @@
 #include "core/object/ref_counted.h"
 #include "modules/bit_grid_2d/bit_grid_2d.h"
 
+class SubgridProbe;
+
 class PCG : public RefCounted {
 	GDCLASS(PCG, RefCounted);
 
 private:
 	Vector2i m_seg_grid_size;
+	int cell_count;
 	int m_w_seg_y;
 	bool m_is_server;
 
@@ -68,14 +71,52 @@ public:
 		bool add_occupancy = true
 	);
 
-	void add_area(
+	void add_tile_rect(
+		int layer_offset,
+		int tile_i,
+		Vector2i seg_gpos,
+		Vector2i g_size,
+		bool add_occupancy
+	);
+	void add_tiles_rect(
 		PackedInt32Array layer_offsets,
 		PackedInt32Array tile_indexes,
 		Vector2i seg_gpos,
 		Vector2i g_size,
 		bool add_occupancy = true
 	);
-	
+	void add_tile_ellipse(
+		int layer_offset,
+		int tile_i,
+		Vector2i seg_gpos,
+		Vector2i g_size,
+		bool add_occupancy = true
+	);
+	void add_tiles_ellipse(
+		PackedInt32Array layer_offsets,
+		PackedInt32Array tile_indexes,
+		Vector2i seg_gpos,
+		Vector2i g_size,
+		bool add_occupancy = true
+	);
+	int add_rand_agnostic_ellipse(
+		Ref<RandomNumberGenerator> rng,
+		int layer_offset,
+		int tile_i,
+		Vector2i g_size,
+		int count = 1,
+		Ref<SubgridProbe> advance_bucket = Ref<SubgridProbe>(),
+		bool add_occupancy = true
+	);
+	void add_rand(
+		Ref<RandomNumberGenerator> rng,
+		int layer_offset,
+		int tile_i,
+		int count = 1,
+		Ref<SubgridProbe> advance_bucket = Ref<SubgridProbe>(),
+		bool add_occupancy = true
+	);
+
 	void add_row(
 		PackedInt32Array layer_offsets,
 		PackedInt32Array tile_indexes,

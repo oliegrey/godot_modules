@@ -1,4 +1,5 @@
 #include "pcg.h"
+#include "modules/subgrid_probe/subgrid_probe.h"
 
 void PCG::_bind_methods() {
 	ClassDB::bind_static_method(
@@ -50,16 +51,84 @@ void PCG::_bind_methods() {
 	);
 	ClassDB::bind_method(
 		D_METHOD(
-			"add_area",
+			"add_tile_rect",
+			"layer_offset",
+			"tile_i",
+			"seg_gpos",
+			"g_size",
+			"add_occupancy"
+		),
+		&PCG::add_tile_rect,
+		DEFVAL(true)
+	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_tiles_rect",
 			"layer_offsets",
 			"tile_indexes",
 			"seg_gpos",
 			"g_size",
 			"add_occupancy"
 		),
-		&PCG::add_area,
+		&PCG::add_tiles_rect,
 		DEFVAL(true)
 	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_tile_ellipse",
+			"layer_offset",
+			"tile_i",
+			"seg_gpos",
+			"g_size",
+			"add_occupancy"
+		),
+		&PCG::add_tile_ellipse,
+		DEFVAL(true)
+	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_tiles_ellipse",
+			"layer_offsets",
+			"tile_indexes",
+			"seg_gpos",
+			"g_size",
+			"add_occupancy"
+		),
+		&PCG::add_tiles_ellipse,
+		DEFVAL(true)
+	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_rand_agnostic_ellipse",
+			"rng",
+			"layer_offset",
+			"tile_i",
+			"g_size",
+			"count",
+			"advance_bucket",
+			"add_occupancy"
+		),
+		&add_rand_agnostic_ellipse,
+		DEFVAL(1),
+		DEFVAL(Ref<SubgridProbe>()),
+		DEFVAL(true)
+	);
+	ClassDB::bind_method(
+		D_METHOD(
+			"add_rand",
+			"rng",
+			"layer_offset",
+			"tile_i",
+			"count",
+			"advance_bucket",
+			"add_occupancy"
+		),
+		&add_rand,
+		DEFVAL(1),
+		DEFVAL(Ref<SubgridProbe>()),
+		DEFVAL(true)
+	);
+
 	ClassDB::bind_method(
 		D_METHOD(
 			"add_row",
@@ -93,6 +162,7 @@ Ref<PCG> PCG::create(
 	Ref<PCG> pcg;
 	pcg.instantiate();
 	pcg->m_seg_grid_size = segment_grid_size;
+	pcg->cell_count = segment_grid_size.x * segment_grid_size.y;
 	pcg->m_w_seg_y = w_seg * segment_grid_size.y;
 	pcg->m_is_server = is_server;
 
@@ -170,7 +240,22 @@ void PCG::add_gpos_tiles(
 	}
 }
 
-void PCG::add_area(
+void PCG::add_tile_rect(
+	int layer_offset,
+	int tile_i,
+	Vector2i seg_gpos,
+	Vector2i g_size,
+	bool add_occupancy
+) {
+	for (int y{ 0 }; y < g_size.y; ++y) {
+		for (int x{ 0 }; x < g_size.x; ++x) {
+			const Vector2i gpos{ seg_gpos + Vector2i(x, y) };
+			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
+		}
+	}
+}
+
+void PCG::add_tiles_rect(
 	PackedInt32Array layer_offsets,
 	PackedInt32Array tile_indexes,
 	Vector2i seg_gpos,
@@ -178,15 +263,53 @@ void PCG::add_area(
 	bool add_occupancy
 ) {
 	for (int i{ 0 }; i < tile_indexes.size(); ++i) {
-		int tile_i{ tile_indexes[i] };
-		int layer_offset{ layer_offsets[i] };
+		add_tile_rect(layer_offsets[i], tile_indexes[i], seg_gpos, g_size, add_occupancy);
+	}
+}
 
-		for (int y{ 0 }; y < g_size.y; ++y) {
-			for (int x{ 0 }; x < g_size.x; ++x) {
-				const Vector2i gpos{ seg_gpos + Vector2i(x, y) };
-				add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
+void PCG::add_tile_ellipse(
+	int layer_offset,
+	int tile_i,
+	Vector2i seg_gpos,
+	Vector2i g_size,
+	bool add_occupancy
+) {
+	const float rx{ g_size.x / 2.0f };
+	const float ry{ g_size.y / 2.0f };
+	const float cx{ (g_size.x - 1) / 2.0f };
+	const float cy{ (g_size.y - 1) / 2.0f };
+	for (int y{ 0 }; y < g_size.y; ++y) {
+		for (int x{ 0 }; x < g_size.x; ++x) {
+			const float dx{ (x - cx) / rx };
+			const float dy{ (y - cy) / ry };
+			if (Math::abs(dx) + Math::abs(dy) > 1.0f) {
+				continue;
 			}
+			const Vector2i gpos{ seg_gpos + Vector2i(x, y) };
+			if (
+				gpos.x >= m_seg_grid_size.x ||
+				gpos.y >= m_seg_grid_size.y ||
+				gpos.x < 0 ||
+				gpos.y < 0
+			) {
+				continue;
+			}
+			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
 		}
+	}
+}
+
+void PCG::add_tiles_ellipse(
+	PackedInt32Array layer_offsets,
+	PackedInt32Array tile_indexes,
+	Vector2i seg_gpos,
+	Vector2i g_size,
+	bool add_occupancy
+) {
+	for (int i{ 0 }; i < tile_indexes.size(); ++i) {
+		const int tile_i{ tile_indexes[i] };
+		const int layer_offset{ layer_offsets[i] };
+		add_tile_ellipse(layer_offset, tile_i, seg_gpos, g_size, add_occupancy);
 	}
 }
 
@@ -228,6 +351,101 @@ void PCG::fill_unoccupied(int tile_i, bool add_occupancy, int layer_offset) {
 			Vector2i gpos{ Vector2i(x, y) };
 			if (!generative_occupancy->is_gpos_set(gpos)) {
 				add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
+			}
+		}
+	}
+}
+
+int PCG::add_rand_agnostic_ellipse(
+	Ref<RandomNumberGenerator> rng,
+	int layer_offset,
+	int tile_i,
+	Vector2i g_size,
+	int count,
+	Ref<SubgridProbe> advance_bucket,
+	bool add_occupancy
+) {
+	int total_set{ 0 };
+	if (g_size.x <= 0 || g_size.y <= 0) {
+		return total_set;
+	}
+
+	const float rx{ g_size.x * 0.5f };
+	const float ry{ g_size.y * 0.5f };
+	const float cx{ (g_size.x - 1) * 0.5f };
+	const float cy{ (g_size.y - 1) * 0.5f };
+
+	for (int i{ 0 }; i < count; ++i) {
+		Vector2i rand_origin_gpos = generative_occupancy->find_rand_gpos_ranged_in_state(
+				rng,
+				Vector2i(0, m_seg_grid_size.y),
+				Vector2i(0, m_seg_grid_size.x));
+		rand_origin_gpos -= g_size / 2;
+
+		const int local_y0{ MAX(0, -rand_origin_gpos.y) };
+		const int local_y1{ MIN(g_size.y, m_seg_grid_size.y - rand_origin_gpos.y) };
+		const int local_x0{ MAX(0, -rand_origin_gpos.x) };
+		const int local_x1{ MIN(g_size.x, m_seg_grid_size.x - rand_origin_gpos.x) };
+
+		if (local_y0 >= local_y1 || local_x0 >= local_x1) {
+			return total_set;
+		}
+
+		const bool has_bucket{ advance_bucket.is_valid() };
+
+		for (int y{ local_y0 }; y < local_y1; ++y) {
+			const float dy{ (y - cy) / ry };
+			const float dy_abs{ Math::abs(dy) };
+			if (dy_abs > 1.0f) {
+				continue;
+			}
+			const float half_span{ rx * (1.0f - dy_abs) };
+			int x_lo{ (int)Math::ceil(cx - half_span) };
+			int x_hi{ (int)Math::floor(cx + half_span) }; // inclusive
+
+			x_lo = MAX(x_lo, local_x0);
+			x_hi = MIN(x_hi, local_x1 - 1);
+
+			if (x_lo > x_hi) {
+				continue;
+			}
+
+			const int row_y{ rand_origin_gpos.y + y };
+
+			for (int x{ x_lo }; x <= x_hi; ++x) {
+
+				const Vector2i gpos{ rand_origin_gpos.x + x, row_y };
+
+				if (!generative_occupancy->is_gpos_set(gpos)) {
+					add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
+					if (has_bucket) {
+						advance_bucket->advance_gpos_bucketing(gpos);
+					}
+					total_set += 1;
+				}
+			}
+		}
+	}
+	
+	return total_set;
+}
+
+
+void PCG::add_rand(
+	Ref<RandomNumberGenerator> rng,
+	int layer_offset,
+	int tile_i,
+	int count,
+	Ref<SubgridProbe> advance_bucket,
+	bool add_occupancy
+) {
+	const bool has_bucket{ advance_bucket == Ref<SubgridProbe>() };
+	for (int i{ 0 }; i < count; ++i) {
+		Vector2i gpos = generative_occupancy->find_rand_gpos_in_state(rng);
+		if (!generative_occupancy->is_gpos_set(gpos)) {
+			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
+			if (has_bucket) {
+				advance_bucket->advance_gpos_bucketing(gpos);
 			}
 		}
 	}

@@ -55,8 +55,8 @@ public:
 
 	Vector2i find_rand_gpos_ranged_in_state(
 		Ref<RandomNumberGenerator> rng,
-		Vector2i search_y_range,
-		Vector2i search_x_range = Vector2i(),
+		Vector2i search_y_range_ex,
+		Vector2i search_x_range_ex = Vector2i(),
 		Vector2i size = Vector2i(1, 1),
 		bool get_unset = true
 	);

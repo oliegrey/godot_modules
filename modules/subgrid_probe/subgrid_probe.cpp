@@ -1,6 +1,7 @@
 #include "subgrid_probe.h"
 #include "modules/bit_grid_2d/bit_grid_2d.h"
 #include "core/math/random_number_generator.h"
+#include "modules/pcg/pcg.h"
 
 void SubgridProbe::_bind_methods() {
 	ClassDB::bind_static_method(

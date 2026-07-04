@@ -1,4 +1,5 @@
 #include "bit_grid_2d.h"
+#include <functional>
 
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -222,61 +223,72 @@ int BitGrid2D::find_cell_in_state(
 	const int end_byte{ end_cell_inc / 8 };
 	const int end_bit{ end_cell_inc % 8 };
 
-	const bool wrap{ end_byte < start_byte };
-	int it_end_byte{ MIN(cell_count / 8, end_byte) };
+	const bool wrap{ end_cell_inc < start_cell };
+	int it_end_byte{ wrap ? cell_count / 8 : MIN(cell_count / 8, end_byte) };
 
-	int i{ start_byte };
+	int byte_i{ start_byte };
 
-	if (start_bit > 0) {
-		uint8_t test_byte{ static_cast<uint8_t>(get_unset ? ~data[i] : data[i]) };
+	const bool in_one_byte{ start_byte == end_byte && !wrap };
+
+	if (start_bit > 0 || in_one_byte) {
+		uint8_t test_byte{
+			static_cast<uint8_t>(get_unset ? ~data[byte_i] : data[byte_i])
+		};
 		uint8_t mask{ static_cast<uint8_t>(0xFF << start_bit) };
+		if (in_one_byte) {
+			mask &= 0xFF >> (7 - end_bit);
+		}
 
 		test_byte &= mask;
 
 		if (test_byte != 0) {
-			return i * 8 + ctz32(test_byte);
+			return byte_i * 8 + ctz32(test_byte);
 		}
-		++i;
-	}
+		if (in_one_byte) {
+			return -1;
+		}
 
-	if (i >= end_byte && !wrap) {
-		return -1;
+		++byte_i;
 	}
 
 	for (int j{ 0 }; j < static_cast<int>(wrap) + 1; ++j) {
 
-		for (; i + 8 <= it_end_byte; i += 8) {
+		for (; byte_i + 8 <= it_end_byte; byte_i += 8) {
 			uint64_t chunk;
-			memcpy(&chunk, data + i, 8);
+			memcpy(&chunk, data + byte_i, 8);
 			if (get_unset) {
 				chunk = ~chunk;
 			}
 
 			if (chunk != 0) {
-				return i * 8 + ctz64(chunk);
+				return byte_i * 8 + ctz64(chunk);
 			}
 		}
 
-		for (; i < it_end_byte; i++) {
-			uint8_t test_byte{ static_cast<uint8_t>(get_unset ? ~data[i] : data[i]) };
+		for (; byte_i < it_end_byte; byte_i++) {
+			uint8_t test_byte{
+				static_cast<uint8_t>(get_unset ? ~data[byte_i] : data[byte_i])
+			};
 
 			if (test_byte != 0) {
-				return i * 8 + ctz32(test_byte);
+				return byte_i * 8 + ctz32(test_byte);
 			}
 		}
 
-		if (wrap) {
-			i = 0;
+		if (wrap && j == 0) {
+			byte_i = 0;
 			it_end_byte = end_byte;
 		}
 	}
 
 	if (end_bit > 0) {
-		uint8_t test_byte{ static_cast<uint8_t>(get_unset ? ~data[i] : data[i]) };
-		uint8_t mask{ static_cast<uint8_t>(0xFF >> (8 - end_bit)) };
+		uint8_t test_byte{
+			static_cast<uint8_t>(get_unset ? ~data[byte_i] : data[byte_i])
+		};
+		uint8_t mask{ static_cast<uint8_t>(0xFF >> (7 - end_bit)) };
 		test_byte &= mask;
 		if (test_byte != 0) {
-			return i * 8 + ctz32(test_byte);
+			return byte_i * 8 + ctz32(test_byte);
 		}
 	}
 
@@ -311,7 +323,7 @@ int BitGrid2D::find_area_in_state(
 
 	while (i < cell_dist) {
 
-		cell_i = find_cell_in_state(cell_i, end_cell_inc, get_unset);
+		cell_i = find_cell_in_state(end_cell_inc, cell_i, get_unset);
 
 		if (cell_i == -1) { return -1; } // no possible areas left
 
@@ -367,7 +379,7 @@ Vector2i BitGrid2D::find_rand_gpos_in_state(
 	int cell_i{ -1 };
 
 	if (required_size == Vector2i(1, 1)) {
-		cell_i = find_cell_in_state(cell_start, cell_end_inc, get_unset);
+		cell_i = find_cell_in_state(cell_end_inc, cell_start, get_unset);
 	} else {
 		cell_i = find_area_in_state(required_size, cell_start, cell_end_inc, get_unset);
 	}
@@ -378,55 +390,101 @@ Vector2i BitGrid2D::find_rand_gpos_in_state(
 
 Vector2i BitGrid2D::find_rand_gpos_ranged_in_state(
 	Ref<RandomNumberGenerator> rng,
-	Vector2i search_y_range_inc,
-	Vector2i search_x_range_inc,
+	Vector2i search_y_range_ex,
+	Vector2i search_x_range_ex,
 	Vector2i size,
 	bool get_unset
 ) {
-	const int cell_min{ search_x_range_inc.x + search_y_range_inc.x * grid_size.x };
-	const int cell_max{ search_x_range_inc.y + search_y_range_inc.y * grid_size.x };
+	// keep ranges in bounds, shouldnt matter if y < x due to wrapping
+	search_x_range_ex.x = MAX(search_x_range_ex.x, 0);
+	search_x_range_ex.y = MIN(search_x_range_ex.y, grid_size.x);
+	search_y_range_ex.x = MAX(search_y_range_ex.x, 0);
+	search_y_range_ex.y = MIN(search_y_range_ex.y, grid_size.y);
 
-	Vector2i rand_gpos{
-		rng->randi_range(search_x_range_inc.x, search_x_range_inc.y),
-		rng->randi_range(search_y_range_inc.x, search_y_range_inc.y)
-	};
+	// get a random starting cell while wrapping correctly
+	Vector2i rand_gpos{};
+	if (search_x_range_ex.x < search_x_range_ex.y) {
+		rand_gpos.x = rng->randi_range(search_x_range_ex.x, search_x_range_ex.y - 1);
+	} else {
+		int width{ grid_size.x - search_x_range_ex.y + search_x_range_ex.x };
+		rand_gpos.x = search_x_range_ex.x + rng->randi_range(0, width);
+	}
+	if (search_y_range_ex.x < search_y_range_ex.y) {
+		rand_gpos.y = rng->randi_range(search_y_range_ex.x, search_y_range_ex.y - 1);
+	} else {
+		int height{ grid_size.y - search_y_range_ex.y + search_y_range_ex.x };
+		rand_gpos.y = search_y_range_ex.x + rng->randi_range(0, height);
+	}
 	const int rand_cell{ rand_gpos.x + rand_gpos.y * grid_size.x };
 
 	int cell_i{ -1 };
 
-	if (search_x_range_inc == Vector2i()) {
+	std::function<int(int, int)> search;
+	if (size == Vector2i(1, 1)) {
+		search = [&](int start, int end_inc) {
+			return find_cell_in_state(end_inc, start, get_unset);
+		};
+	} else {
+		search = [&](int start, int end_inc) {
+			return find_area_in_state(size, start, end_inc, get_unset);
+		};
+	}
+
+	if (search_x_range_ex == Vector2i()) {
+		const int start_cell{ search_y_range_ex.x * grid_size.x };
+		const int enc_cell_inc{ search_y_range_ex.y * grid_size.x - 1 };
+
 		if (size == Vector2i(1, 1)) {
-			cell_i = find_cell_in_state(rand_cell, cell_max, get_unset);
-			if (cell_i == -1) {
-				cell_i = find_cell_in_state(cell_min, rand_cell, get_unset);
+			cell_i = search(rand_cell, enc_cell_inc);
+			if (cell_i == -1 && start_cell != rand_cell) {
+				cell_i = search(start_cell, rand_cell - 1);
 			}
-		} else {
-			cell_i = find_area_in_state(size, rand_cell, cell_max, get_unset);
-			if (cell_i == -1) {
-				cell_i = find_area_in_state(size, cell_min, rand_cell, get_unset);
+			else if (cell_i != -1) {
+				return Vector2i(cell_i % grid_size.x, cell_i / grid_size.x);
 			}
-		}
+		} 
 
 	} else {
-		for (int y{ search_y_range_inc.x }; y < search_y_range_inc.y + 1 && cell_i == -1; ++y) {
-			const int row_min{ search_x_range_inc.x + y * grid_size.x };
-			const int row_max{ search_x_range_inc.y + y * grid_size.x };
-			const int row_start{ (y == rand_gpos.y) ? rand_cell : row_min };
+		bool wrap_x{ search_x_range_ex.x >= search_x_range_ex.y };
+		bool wrap_y{ search_y_range_ex.x >= search_y_range_ex.y };
+		int start_y_it{ rand_gpos.y };
+		int end_y_it{ wrap_y ? grid_size.y : search_y_range_ex.y };
+		int start_x_it{ rand_gpos.x };
+		int end_x_it{ search_x_range_ex.y };
 
-			if (size == Vector2i(1, 1)) {
-				cell_i = find_cell_in_state(row_start, row_max, get_unset);
-				if (cell_i == -1 && row_start != row_min) {
-					cell_i = find_cell_in_state(row_min, row_start, get_unset);
+		if (size == Vector2i(1, 1)) {
+			for (int y_it{ 0 }; y_it < 1 + static_cast<int>(wrap_y); ++y_it) {
+				for (int y{ start_y_it }; y < end_y_it; ++y) {
+					if (wrap_x) {
+						end_x_it = grid_size.x;
+					}
+
+					for (int x_it{ 0 }; x_it < 1 + static_cast<int>(wrap_x); ++x_it) {
+						int cell_start{ start_x_it + y * grid_size.x };
+						int cell_end_inc{ end_x_it + y * grid_size.x - 1 };
+
+						cell_i = search(cell_start, cell_end_inc);
+
+						if (cell_i != -1) {
+							return Vector2i(cell_i % grid_size.x, cell_i / grid_size.x);
+						}
+
+						if (wrap_x && x_it == 0) {
+							start_x_it = 0;
+							end_x_it = search_x_range_ex.y;
+						}
+					}
 				}
-			} else {
-				cell_i = find_area_in_state(size, row_start, row_max, get_unset);
-				if (cell_i == -1 && row_start != row_min) {
-					cell_i = find_area_in_state(size, row_min, row_start, get_unset);
+
+				if (wrap_y && y_it == 0) {
+					start_y_it = 0;
+					end_y_it = search_y_range_ex.x;
 				}
 			}
 		}
 	}
 
-	if (cell_i == -1) { return Vector2i(-9999, -9999); }
-	return Vector2i(cell_i % grid_size.x, cell_i / grid_size.x);
+	return Vector2i(-9999, -9999);
 }
+	
+

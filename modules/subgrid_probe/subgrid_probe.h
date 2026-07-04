@@ -2,7 +2,9 @@
 
 #include "core/object/ref_counted.h"
 #include "core/math/random_number_generator.h"
-#include "modules/pcg/pcg.h"
+
+class PCG;
+class BitGrid2D;
 
 class SubgridProbe : public RefCounted {
 	GDCLASS(SubgridProbe, RefCounted);
