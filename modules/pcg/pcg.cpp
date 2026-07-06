@@ -1,26 +1,7 @@
 #include "pcg.h"
+#include "modules/bit_grid_2d/bit_grid_2d.h"
 #include "modules/subgrid_probe/subgrid_probe.h"
-
-#if defined(_MSC_VER)
-#include <intrin.h>
-static inline int ctz32(uint32_t x) {
-	unsigned long index;
-	_BitScanForward(&index, x);
-	return static_cast<int>(index);
-}
-static inline int ctz64(uint64_t x) {
-	unsigned long index;
-	_BitScanForward64(&index, x);
-	return static_cast<int>(index);
-}
-#else
-static inline int ctz32(uint32_t x) {
-	return __builtin_ctz(x);
-}
-static inline int ctz64(uint64_t x) {
-	return __builtin_ctzll(x);
-}
-#endif
+#include "core/math/random_number_generator.h"
 
 void PCG::_bind_methods() {
 	ClassDB::bind_static_method(
@@ -129,7 +110,7 @@ void PCG::_bind_methods() {
 			"advance_bucket",
 			"add_occupancy"
 		),
-		&add_rand_agnostic_ellipse,
+		&PCG::add_rand_agnostic_ellipse,
 		DEFVAL(1),
 		DEFVAL(Ref<SubgridProbe>()),
 		DEFVAL(true)
@@ -144,7 +125,7 @@ void PCG::_bind_methods() {
 			"advance_bucket",
 			"add_occupancy"
 		),
-		&add_rand,
+		&PCG::add_rand,
 		DEFVAL(1),
 		DEFVAL(Ref<SubgridProbe>()),
 		DEFVAL(true)
@@ -200,6 +181,14 @@ Ref<PCG> PCG::create(
 	pcg->drawn_indexes.resize(cell_count * layer_count);
 	pcg->drawn_indexes.fill(-1);
 	return pcg;
+}
+
+Ref<BitGrid2D> PCG::get_generative_occupancy() const {
+	return generative_occupancy;
+}
+
+void PCG::clear_occupancy() const {
+	generative_occupancy->clear();
 }
 
 Vector2i PCG::to_world(Vector2i seg_gpos) {

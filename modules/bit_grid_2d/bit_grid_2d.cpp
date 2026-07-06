@@ -1,4 +1,6 @@
 #include "bit_grid_2d.h"
+#include "core/math/random_number_generator.h"
+
 #include <functional>
 
 #if defined(_MSC_VER)
@@ -26,6 +28,10 @@ void BitGrid2D::_bind_methods() {
 	ClassDB::bind_static_method(
 		"BitGrid2D", D_METHOD("create", "grid_size"), &BitGrid2D::create
 	);
+	ClassDB::bind_method(
+		D_METHOD("is_empty"), &BitGrid2D::is_empty
+	);
+
 	ClassDB::bind_method(D_METHOD("clear"), &BitGrid2D::clear);
 
 	ClassDB::bind_method(
@@ -75,6 +81,11 @@ void BitGrid2D::_bind_methods() {
 		&BitGrid2D::find_area_in_state,
 		DEFVAL(true)
 	);
+	ClassDB::bind_method(
+		D_METHOD("get_max_area_in_state", "origin", "search_size"),
+		&BitGrid2D::get_max_area_in_state
+	);
+
 	ClassDB::bind_method(
 		D_METHOD(
 			"find_rand_gpos_in_state",
@@ -130,6 +141,28 @@ Ref<BitGrid2D> BitGrid2D::create(const Vector2i _grid_size) {
 	bit_grid->grid_size = _grid_size;
 	bit_grid->cell_count = _grid_size.x * _grid_size.y;
 	return bit_grid;
+}
+
+bool BitGrid2D::is_empty() const {
+	const uint8_t *data = bitmap.ptr();
+	int64_t size = bitmap.size();
+
+	int64_t chunk_i{ 0 };
+	int64_t chunk_count = size / 8;
+	const uint64_t *chunk_64_ptr = reinterpret_cast<const uint64_t *>(data);
+	for (; chunk_i < chunk_count; ++chunk_i) {
+		if (*(chunk_64_ptr + chunk_i) != 0) {
+			return false;
+		}
+	}
+
+	for (int64_t tail_byte_i{ chunk_i * 8 }; tail_byte_i < size; ++tail_byte_i) {
+		if (data[tail_byte_i] != 0) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 int BitGrid2D::gpos_to_cell_i(const Vector2i gpos) const {
@@ -211,6 +244,35 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 		}
 	}
 	return true;
+}
+
+// anchors to x or y axis
+PackedVector2Array BitGrid2D::get_max_area_in_state(
+	Vector2i origin, Vector2i search_size, const int dir // refer to bit_grid_2d.h just want to get this done
+) const {
+	ERR_FAIL_COND_V_MSG(
+		search_size.x <= 0 || search_size.y <= 0, PackedVector2Array(),
+		"provided size is zero area"
+	);
+	ERR_FAIL_COND_V_MSG(
+		origin < Vector2i(0, 0) || origin + search_size > grid_size, PackedVector2Array(),
+		"provided origin + search_size out of grid bounds"
+	);
+
+	PackedVector2Array org_size{origin, search_size};
+
+	for (int y{ origin.y }; y < origin.y + search_size.y; y++) {
+		for (int x{ origin.x }; x < origin.x + search_size.x; x++) {
+			const int cell_i{ gpos_to_cell_i(Vector2i(x, y)) };
+
+			if ((bitmap[cell_i / 8] >> (cell_i % 8)) & 1) {
+				if (is_x_anchored) { org_size.ptrw()[0].y = y; }
+				else               { org_size.ptrw()[0].x = x; }
+				
+			}
+		}
+	}
+	return org_size;
 }
 
 int BitGrid2D::find_cell_in_state(

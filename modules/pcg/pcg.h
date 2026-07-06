@@ -1,9 +1,10 @@
 #pragma once
 
 #include "core/object/ref_counted.h"
-#include "modules/bit_grid_2d/bit_grid_2d.h"
 
+class BitGrid2D;
 class SubgridProbe;
+class RandomNumberGenerator;
 
 class PCG : public RefCounted {
 	GDCLASS(PCG, RefCounted);
@@ -41,10 +42,10 @@ public:
 		bool is_server
 	);
 
-	Ref<BitGrid2D> get_generative_occupancy() const { return generative_occupancy; }
+	Ref<BitGrid2D> get_generative_occupancy() const;
 	const PackedByteArray& get_tile_data() const { return tile_data; }
 	PackedInt64Array get_drawn_indexes() const {
-		return drawn_indexes.slice(0, drawn_indexes_i); // should only be called once or twice, slicing fine
+		return drawn_indexes.slice(0, drawn_indexes_i); // should only be called once or twice, slice copy is fine
 	}
 	int get_drawn_indexes_i() const { return drawn_indexes_i; }
 	int get_used_cell_count() const { return used_cell_count; }
@@ -134,27 +135,5 @@ public:
 		int tile_i = 255, bool add_occupancy = false, int layer_offset = -1
 	);
 
-	void clear_occupancy() const { generative_occupancy->clear(); }
-
-	Vector2i get_random_gpos(
-		Vector2i g_size,
-		Vector2i x_gpos_range,
-		Vector2i y_gpos_range,
-		const PackedByteArray &occupancy_bitmap
-	) {
-		ERR_FAIL_COND_V_MSG(x_gpos_range.x < 0, Vector2i(), "x min too small");
-		ERR_FAIL_COND_V_MSG(y_gpos_range.x < 0, Vector2i(), "y min too small");
-		ERR_FAIL_COND_V_MSG(
-			x_gpos_range.y + g_size.x > m_seg_grid_size.x, Vector2i(),
-			"the provided x max would be out of bounds"
-		);
-		ERR_FAIL_COND_V_MSG(
-			y_gpos_range.y + g_size.y > m_seg_grid_size.y, Vector2i(),
-			"the provided y max would be out of bounds"
-		);
-
-		if (occupancy_bitmap.size() >= 0) {
-
-		}
-	}
+	void clear_occupancy() const;
 };

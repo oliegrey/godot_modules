@@ -1,10 +1,15 @@
 #pragma once
 
 #include "core/object/ref_counted.h"
-#include "core/math/random_number_generator.h"
+#include "core/variant/typed_array.h"
+
+class RandomNumberGenerator;
 
 class BitGrid2D : public RefCounted {
 	GDCLASS(BitGrid2D, RefCounted);
+
+public:
+	enum Direction {NONE = -1, UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, MAX = 4};
 
 private:
 	Vector2i grid_size;
@@ -27,6 +32,8 @@ public:
 	PackedByteArray get_bitmap() const { return bitmap; }
 	void fill() { bitmap.fill(255); }
 	void clear() { bitmap.fill(0); }
+
+	bool is_empty() const;
 	
 	bool is_gpos_set(const Vector2i gpos) const;
 	void set_gpos(const Vector2i gpos);
@@ -38,6 +45,9 @@ public:
 
 	bool is_area_free(const Vector2i origin, const Vector2i) const;
 	void set_area(const Vector2i gpos, const Vector2i size);
+	PackedVector2Array get_max_area_in_state(
+		Vector2i origin, Vector2i search_size, const Direction dir
+	);
 
 	int find_cell_in_state(
 		int end_cell_inc, int start_cell = 0, bool get_unset = true
