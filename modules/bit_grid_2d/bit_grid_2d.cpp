@@ -261,61 +261,58 @@ PackedVector2Array BitGrid2D::get_max_area_in_state(
 
 	Vector2i hist_origin{ origin };
 	int polarity{-1};
-
 	PackedVector2Array quad_org_size{};
-
 	int i{ 0 };
 
 	switch (anchor_dir) {
-		case Direction::DOWN:
+		case Direction::DOWN: {
 			polarity = 1;
 			hist_origin.y += search_size.y;
-		case Direction::UP:
+		}
+		case Direction::UP: {
 			quad_org_size.resize_zeroed(search_size.y);
 
-			const int max_y_search_end{ hist_origin.y + (search_size.y * polarity) };
-			int y_search_end{ max_y_search_end };
 			Vector2 *quad_origin{ quad_org_size.ptrw() };
 			Vector2 *quad_size{ quad_org_size.ptrw() + 1 };
-			
-			for (int x_i{ 0 }; x_i < search_size.x; ++x_i) {
-				int x{ hist_origin.x + x_i };
-				int y{ hist_origin.y };
 
-				for (; y < y_search_end; y += polarity) {
+			for (int x{ 0 }; x < search_size.x; ++x) {
+
+				for (int y{ 0 }; abs(y) < search_size.y; y += polarity) {
+
 					const int cell_i{ gpos_to_cell_i(hist_origin + Vector2i(x, y)) };
-					const bool cell_set{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
+					const bool is_cell_set{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
 
-					if (cell_set) {
-						const bool has_no_height{ y == hist_origin.y };
+					if (!is_cell_set) { continue; }
 
-						if (!has_no_height) {
-							quad_size->x += 1;
-							quad_size->y = MIN(y, quad_size->y);
-							y_search_end = quad_size->y;
-						}
-						else if (*quad_size != Vector2(0, 0)) {
-							i += 2;
-							quad_origin = quad_org_size.ptrw() + i;
-							quad_size = quad_org_size.ptrw() + i + 1;
-							
-							quad_origin->x = x;
-							quad_origin->y = origin.y;
+					const bool has_no_height{ y == 0 };
 
-							y_search_end = max_y_search_end;
-						}
-						break;
+					if (has_no_height && quad_size->x != 0) {
+						i += 2;
+						quad_origin = quad_org_size.ptrw() + i;
+						quad_size = quad_org_size.ptrw() + i + 1;
+
+						quad_size->y = search_size.y;
+
+						quad_origin->x = hist_origin.x + x;
+						quad_origin->y = hist_origin.y;
 					}
+
+					quad_size->y = MIN(abs(y), quad_size->y);
+					quad_size->x += 1;
+
+					break;
 				}
 			}
+		}
 
 			break;
 		
-		case Direction::RIGHT:
+		case Direction::RIGHT: {
 			polarity = 1;
 			hist_origin.x += search_size.x;
-		case Direction::LEFT:
-			quad_org_size.resize(search_size.x);
+		}
+		case Direction::LEFT: {
+			quad_org_size.resize_zeroed(search_size.x);
 
 			const int max_x_search_end{ hist_origin.x + (search_size.x * polarity) };
 			int x_search_end{ max_x_search_end };
@@ -331,28 +328,33 @@ PackedVector2Array BitGrid2D::get_max_area_in_state(
 					const bool cell_set{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
 
 					if (cell_set) {
-						const bool has_no_height{ x == hist_origin.x };
-
-						if (!has_no_height) {
-							quad_size->y += 1;
-							quad_size->x = MIN(y, quad_size->x);
-							x_search_end = quad_size->x;
-						} else if (*quad_size != Vector2(0, 0)) {
-							i += 2;
-							quad_origin = quad_org_size.ptrw() + i;
-							quad_size = quad_org_size.ptrw() + i + 1;
-
-							quad_origin->y = y;
-							quad_origin->x = origin.x;
-
-							x_search_end = max_x_search_end;
-						}
-						break;
+						continue;
 					}
+
+					const bool has_no_height{ x == hist_origin.x };
+
+					if (!has_no_height) {
+						quad_size->y += 1;
+						quad_size->x = MIN(y, quad_size->x);
+						x_search_end = quad_size->x;
+
+					} else if (*quad_size != Vector2(0, 0)) {
+						i += 2;
+						quad_origin = quad_org_size.ptrw() + i;
+						quad_size = quad_org_size.ptrw() + i + 1;
+
+						quad_origin->y = y;
+						quad_origin->x = origin.x;
+
+						x_search_end = max_x_search_end;
+					}
+
+					break;
 				}
 			}
 
 			break;
+		}
 
 		default:
 			return PackedVector2Array();
