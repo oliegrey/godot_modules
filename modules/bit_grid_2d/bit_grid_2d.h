@@ -46,8 +46,8 @@ public:
 	bool is_area_free(const Vector2i origin, const Vector2i) const;
 	void set_area(const Vector2i gpos, const Vector2i size);
 	PackedVector2Array get_max_area_in_state(
-		Vector2i origin, Vector2i search_size, const Direction dir
-	);
+		Vector2i origin, Vector2i search_size, const Direction anchor_dir
+	) const;
 
 	int find_cell_in_state(
 		int end_cell_inc, int start_cell = 0, bool get_unset = true

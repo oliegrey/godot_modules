@@ -246,9 +246,9 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 	return true;
 }
 
-// anchors to x or y axis
+// origin is top left cell of search size
 PackedVector2Array BitGrid2D::get_max_area_in_state(
-	Vector2i origin, Vector2i search_size, const int dir // refer to bit_grid_2d.h just want to get this done
+	Vector2i origin, Vector2i search_size, const Direction anchor_dir
 ) const {
 	ERR_FAIL_COND_V_MSG(
 		search_size.x <= 0 || search_size.y <= 0, PackedVector2Array(),
@@ -259,20 +259,107 @@ PackedVector2Array BitGrid2D::get_max_area_in_state(
 		"provided origin + search_size out of grid bounds"
 	);
 
-	PackedVector2Array org_size{origin, search_size};
+	Vector2i hist_origin{ origin };
+	int polarity{-1};
 
-	for (int y{ origin.y }; y < origin.y + search_size.y; y++) {
-		for (int x{ origin.x }; x < origin.x + search_size.x; x++) {
-			const int cell_i{ gpos_to_cell_i(Vector2i(x, y)) };
+	PackedVector2Array quad_org_size{};
 
-			if ((bitmap[cell_i / 8] >> (cell_i % 8)) & 1) {
-				if (is_x_anchored) { org_size.ptrw()[0].y = y; }
-				else               { org_size.ptrw()[0].x = x; }
-				
+	int i{ 0 };
+
+	switch (anchor_dir) {
+		case Direction::DOWN:
+			polarity = 1;
+			hist_origin.y += search_size.y;
+		case Direction::UP:
+			quad_org_size.resize_zeroed(search_size.y);
+
+			const int max_y_search_end{ hist_origin.y + (search_size.y * polarity) };
+			int y_search_end{ max_y_search_end };
+			Vector2 *quad_origin{ quad_org_size.ptrw() };
+			Vector2 *quad_size{ quad_org_size.ptrw() + 1 };
+			
+			for (int x_i{ 0 }; x_i < search_size.x; ++x_i) {
+				int x{ hist_origin.x + x_i };
+				int y{ hist_origin.y };
+
+				for (; y < y_search_end; y += polarity) {
+					const int cell_i{ gpos_to_cell_i(hist_origin + Vector2i(x, y)) };
+					const bool cell_set{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
+
+					if (cell_set) {
+						const bool has_no_height{ y == hist_origin.y };
+
+						if (!has_no_height) {
+							quad_size->x += 1;
+							quad_size->y = MIN(y, quad_size->y);
+							y_search_end = quad_size->y;
+						}
+						else if (*quad_size != Vector2(0, 0)) {
+							i += 2;
+							quad_origin = quad_org_size.ptrw() + i;
+							quad_size = quad_org_size.ptrw() + i + 1;
+							
+							quad_origin->x = x;
+							quad_origin->y = origin.y;
+
+							y_search_end = max_y_search_end;
+						}
+						break;
+					}
+				}
 			}
-		}
+
+			break;
+		
+		case Direction::RIGHT:
+			polarity = 1;
+			hist_origin.x += search_size.x;
+		case Direction::LEFT:
+			quad_org_size.resize(search_size.x);
+
+			const int max_x_search_end{ hist_origin.x + (search_size.x * polarity) };
+			int x_search_end{ max_x_search_end };
+			Vector2 *quad_origin{ quad_org_size.ptrw() };
+			Vector2 *quad_size{ quad_org_size.ptrw() + 1 };
+
+			for (int y_i{ 0 }; y_i < search_size.y; ++y_i) {
+				int x{ hist_origin.x };
+				int y{ hist_origin.y + y_i };
+
+				for (; x < x_search_end; x += polarity) {
+					const int cell_i{ gpos_to_cell_i(hist_origin + Vector2i(x, y)) };
+					const bool cell_set{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
+
+					if (cell_set) {
+						const bool has_no_height{ x == hist_origin.x };
+
+						if (!has_no_height) {
+							quad_size->y += 1;
+							quad_size->x = MIN(y, quad_size->x);
+							x_search_end = quad_size->x;
+						} else if (*quad_size != Vector2(0, 0)) {
+							i += 2;
+							quad_origin = quad_org_size.ptrw() + i;
+							quad_size = quad_org_size.ptrw() + i + 1;
+
+							quad_origin->y = y;
+							quad_origin->x = origin.x;
+
+							x_search_end = max_x_search_end;
+						}
+						break;
+					}
+				}
+			}
+
+			break;
+
+		default:
+			return PackedVector2Array();
 	}
-	return org_size;
+
+	quad_org_size.resize(i + 1);
+	return quad_org_size;
 }
 
 int BitGrid2D::find_cell_in_state(
