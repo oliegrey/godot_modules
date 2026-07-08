@@ -10,6 +10,7 @@ class BitGrid2D : public RefCounted {
 
 public:
 	enum Direction {NONE = -1, UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, MAX = 4};
+	enum Axis {X = 0, Y = 1};
 
 private:
 	Vector2i grid_size;
@@ -45,8 +46,8 @@ public:
 
 	bool is_area_free(const Vector2i origin, const Vector2i) const;
 	void set_area(const Vector2i gpos, const Vector2i size);
-	PackedVector2Array get_max_area_in_state(
-		Vector2i origin, Vector2i search_size, const Direction anchor_dir
+	PackedVector2Array find_anchored_unset_areas_in_bounds(
+		Vector2i origin, Vector2i bounds_size, const Direction anchor_dir
 	) const;
 
 	int find_cell_in_state(

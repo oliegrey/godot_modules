@@ -247,7 +247,7 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 }
 
 // origin is top left cell of search size
-PackedVector2Array BitGrid2D::get_max_area_in_state(
+PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 	Vector2i origin, Vector2i search_size, const Direction anchor_dir
 ) const {
 	ERR_FAIL_COND_V_MSG(
@@ -260,107 +260,79 @@ PackedVector2Array BitGrid2D::get_max_area_in_state(
 	);
 
 	Vector2i hist_origin{ origin };
-	int polarity{-1};
-	PackedVector2Array quad_org_size{};
-	int i{ 0 };
+	int hist_polarity{ 1 };
+	Axis hist_axis{};
 
 	switch (anchor_dir) {
 		case Direction::DOWN: {
-			polarity = 1;
-			hist_origin.y += search_size.y;
+			hist_polarity = -1;
+			hist_origin.y += search_size.y - 1;
+			[[fallthrough]];
 		}
 		case Direction::UP: {
-			quad_org_size.resize_zeroed(search_size.y);
-
-			Vector2 *quad_origin{ quad_org_size.ptrw() };
-			Vector2 *quad_size{ quad_org_size.ptrw() + 1 };
-
-			for (int x{ 0 }; x < search_size.x; ++x) {
-
-				for (int y{ 0 }; abs(y) < search_size.y; y += polarity) {
-
-					const int cell_i{ gpos_to_cell_i(hist_origin + Vector2i(x, y)) };
-					const bool is_cell_set{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
-
-					if (!is_cell_set) { continue; }
-
-					const bool has_no_height{ y == 0 };
-
-					if (has_no_height && quad_size->x != 0) {
-						i += 2;
-						quad_origin = quad_org_size.ptrw() + i;
-						quad_size = quad_org_size.ptrw() + i + 1;
-
-						quad_size->y = search_size.y;
-
-						quad_origin->x = hist_origin.x + x;
-						quad_origin->y = hist_origin.y;
-					}
-
-					quad_size->y = MIN(abs(y), quad_size->y);
-					quad_size->x += 1;
-
-					break;
-				}
-			}
-		}
-
+			hist_axis = Axis::Y;
 			break;
+		}
 		
 		case Direction::RIGHT: {
-			polarity = 1;
-			hist_origin.x += search_size.x;
+			hist_polarity = -1;
+			hist_origin.x += search_size.x - 1;
+			[[fallthrough]];
 		}
 		case Direction::LEFT: {
-			quad_org_size.resize_zeroed(search_size.x);
-
-			const int max_x_search_end{ hist_origin.x + (search_size.x * polarity) };
-			int x_search_end{ max_x_search_end };
-			Vector2 *quad_origin{ quad_org_size.ptrw() };
-			Vector2 *quad_size{ quad_org_size.ptrw() + 1 };
-
-			for (int y_i{ 0 }; y_i < search_size.y; ++y_i) {
-				int x{ hist_origin.x };
-				int y{ hist_origin.y + y_i };
-
-				for (; x < x_search_end; x += polarity) {
-					const int cell_i{ gpos_to_cell_i(hist_origin + Vector2i(x, y)) };
-					const bool cell_set{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
-
-					if (cell_set) {
-						continue;
-					}
-
-					const bool has_no_height{ x == hist_origin.x };
-
-					if (!has_no_height) {
-						quad_size->y += 1;
-						quad_size->x = MIN(y, quad_size->x);
-						x_search_end = quad_size->x;
-
-					} else if (*quad_size != Vector2(0, 0)) {
-						i += 2;
-						quad_origin = quad_org_size.ptrw() + i;
-						quad_size = quad_org_size.ptrw() + i + 1;
-
-						quad_origin->y = y;
-						quad_origin->x = origin.x;
-
-						x_search_end = max_x_search_end;
-					}
-
-					break;
-				}
-			}
-
+			hist_axis = Axis::X;
 			break;
 		}
-
+		
 		default:
 			return PackedVector2Array();
 	}
 
-	quad_org_size.resize(i + 1);
+	const int hist_max_dist{ search_size[hist_axis] };
+	const int max_bar_count{ search_size[1 - hist_axis] };
+
+	PackedVector2Array quad_org_size{};
+	quad_org_size.resize_zeroed(static_cast<size_t>(max_bar_count) * 2);
+	size_t i{ 0 };
+
+	Vector2 *quad_size{ quad_org_size.ptrw() + 1 };
+
+	for (int bar_i{ 0 }; bar_i < max_bar_count; ++bar_i) {
+
+		int hist_dist{ 0 };
+		for (; hist_dist < hist_max_dist; ++hist_dist) {
+
+			Vector2i origin_delta;
+			origin_delta[hist_axis] = hist_dist * hist_polarity;
+			origin_delta[1 - hist_axis] = bar_i;
+
+			const int cell_i{ gpos_to_cell_i(hist_origin + origin_delta) };
+			const bool is_cell_set{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
+			if (is_cell_set) {
+				break;
+			}
+		}
+
+		// does a bar exist
+		if (hist_dist <= 0) {
+			(*quad_size)[hist_axis] = 0;
+			continue;
+		}
+
+		// is this the first bar in a new quad
+		if ((*quad_size)[hist_axis] <= 0) { 
+			quad_org_size.ptrw()[i] = Vector2i(hist_origin.x, hist_origin.y);
+			quad_org_size.ptrw()[i][1 - hist_axis] += bar_i;
+			quad_size = quad_org_size.ptrw() + i + 1;
+			(*quad_size)[hist_axis] = hist_max_dist;
+			i += 2;
+		}
+
+		++(*quad_size)[1 - hist_axis];
+		(*quad_size)[hist_axis] = MIN(hist_dist, (*quad_size)[hist_axis]);
+	}
+
+	quad_org_size.resize(i);
 	return quad_org_size;
 }
 
