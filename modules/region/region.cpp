@@ -47,6 +47,13 @@ void Region::_bind_methods() {
 	ClassDB::bind_static_method("Region", D_METHOD("finalize"), &Region::finalize);
 
 	ClassDB::bind_static_method("Region", D_METHOD("generate_zone", "rng", "pcg"), &Region::generate_zone);
+
+	BIND_ENUM_CONSTANT(NONE);
+	BIND_ENUM_CONSTANT(UP);
+	BIND_ENUM_CONSTANT(DOWN);
+	BIND_ENUM_CONSTANT(LEFT);
+	BIND_ENUM_CONSTANT(RIGHT);
+	BIND_ENUM_CONSTANT(DIRECTION_MAX);
 }
 
 void Region::initialize(Vector2i seg_g_size) {
