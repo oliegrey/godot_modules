@@ -30,20 +30,20 @@ private:
 	// index = attachment Direction [0 - 3] * quad size flattened i.e. (4 * 3)
 	// -> all secondary regions that fit size and direction
 	// RegionVector ordered by threshold so its easy to iterate within bounds
-	inline static std::array<RegionVector, FLAT_TREE_SIZE> m_region_tree;
+	inline static std::array<RegionVector, FLAT_TREE_SIZE> m_region_tree{};
 	// bitmap to find the next size that has matching regions
-	inline static std::array<uint64_t, Direction::DIRECTION_MAX> m_region_tree_occ;
+	inline static std::array<uint64_t, Direction::DIRECTION_MAX> m_region_tree_occ{};
 
 	// attachment direction (already placed regions perspective) [0 - 3] -> region
 	// to get a random region to test in a free direction
 	// RegionVector ordered by threshold so its easy to iterate within bounds
-	inline static std::array<RegionVector, Direction::DIRECTION_MAX> m_dir_to_region;
+	inline static std::array<RegionVector, Direction::DIRECTION_MAX> m_dir_to_region{};
 
 	// starting regions to build off of
 	// ordered by threshold so its easy to iterate within bounds
-	inline static RegionVector m_primary_regions;
+	inline static RegionVector m_primary_regions{};
 	// ordered by threshold so its easy to iterate within bounds
-	inline static RegionVector m_secondary_regions;
+	inline static RegionVector m_secondary_regions{};
 
 	int m_cell_count;
 
@@ -88,11 +88,7 @@ public:
 
 	static void finalize();
 
-	static PackedFloat32Array get_normalized_weights(
-		const LocalVector<Ref<Region>> &regions, const int regions_max
-	);
-
-	static void generate_zone(
+	void generate_zone(
 		Ref<RandomNumberGenerator> rng,
 		Ref<PCG> pcg,
 		const int w_seg,

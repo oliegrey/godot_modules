@@ -167,21 +167,7 @@ int Region::get_next_set_bit(uint64_t bitmap, const int start_i) {
 	return ctz64(masked_bitmap);
 }
 
-PackedFloat32Array Region::get_normalized_weights(
-	const LocalVector<Ref<Region>> &regions, const int regions_max
-) {
-	PackedFloat32Array normalized_weights;
-	normalized_weights.resize(regions_max);
-	float total{ 0.0 };
-	for (Ref<Region> region : regions) {
-		total += region->spawn_weight;
-	}
-	for (int i{ 0 }; i < regions_max; ++i) {
-		normalized_weights.set(i, regions[i]->spawn_weight / total);
-	}
-	return normalized_weights;
-}
-
+//Ref<Region> search_tree
 
 void Region::generate_zone(
 	Ref<RandomNumberGenerator> rng,
@@ -208,10 +194,11 @@ void Region::generate_zone(
 	std::array<std::array<Vector2i, 64>, 4> dir_size_gpos{};
 
 	
-	std::array<PackedFloat32Array, Direction::DIRECTION_MAX> weights;
+	std::array<PackedFloat32Array, Direction::DIRECTION_MAX> dir_weights;
 
+	// create lists of weights for the group of possible regions for each direction
 	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
-		weights[dir].resize(m_secondary_regions.size());
+		dir_weights[dir].resize(m_secondary_regions.size());
 		RegionVector group{ m_dir_to_region[dir] };
 
 		size_t j{ 0 };
@@ -220,28 +207,57 @@ void Region::generate_zone(
 			if (group[j]->threshold > level) {
 				break;
 			}
-			weights[dir].set(j, secondary->spawn_weight);
+			dir_weights[dir].set(j, secondary->spawn_weight);
 		}
-		weights[dir].resize(j);
+		dir_weights[dir].resize(j);
 	}
 
-	int secondary_count{ rng->randi_range(0, max_secondary_count) };
+	int target_secondary_count{ rng->randi_range(0, max_secondary_count) };
 
-	for (int i{ 0 }; i < secondary_count; ++i) {
+	// IMPORTANT: we get a random direction from off of the primary and following
+	// secondaries, because the other option is ass. this biases against higher weighted
+	// options if they dont have more sides open... is there a good way to fix for this?
+	// maybe divide the weighting by the amount of sides option so they appear more
+	// on those sides when they are chosen?
+
+	// 1. go through each direction in order, starting with a random offset
+	// 2. pick a region based on weighted random
+	// 3. check if that regions size or above already exists in the region tree for that direction
+	// 4. for each edge available in that direction check if the area fits the region
+	// if not then add it to the position tree, try again until exhausted, add region to waiting list
+	// if it does then place it
+
+	// dir * max_size + size -> position
+	std::array<Vector2i, FLAT_TREE_SIZE> dir_size_to_pos;
+	std::array<uint64_t, Direction::DIRECTION_MAX> dir_size_to_pos_occ{};
+
+	for (int i{ 0 }; i < target_secondary_count; ++i) {
 		const int rand_dir{ rng->randi_range(0, Direction::DIRECTION_MAX - 1) };
-		const int64_t max_group_i{ weights[rand_dir].size() };
-		const int64_t rand_i{ rng->rand_weighted(weights[rand_dir]) };
+		const int64_t max_group_i{ dir_weights[rand_dir].size() };
+		const int64_t rand_i{ rng->rand_weighted(dir_weights[rand_dir]) };
 		
 		for (int dir_offset{ 0 }; dir_offset < Direction::DIRECTION_MAX; ++dir_offset) {
 			int dir{ (rand_dir + dir_offset) % Direction::DIRECTION_MAX };
-			RegionVector group{ m_dir_to_region[dir] };
+			RegionVector dir_group{ m_dir_to_region[dir] };
 
 			// max_group_i limits the sorted list based on threshold value
 			for (int group_offset{ 0 }; group_offset < max_group_i; ++group_offset) {
-				int64_t group_i{ (rand_i + group_offset) % max_group_i };
-				Ref<Region> secondary{ group[group_i] };
+				const int64_t group_i{ (rand_i + group_offset) % max_group_i };
+				const Ref<Region> secondary{ dir_group[group_i] };
 
-				secondary->g_size_inclusive;
+				const Vector2i secondary_size_inc{ secondary->g_size_inclusive };
+				const int region_cell_count{ secondary_size_inc.x * secondary_size_inc.y };
+				const int64_t occupancy{ dir_size_to_pos_occ[dir] };
+				const int tree_dir_cell_i{ get_next_set_bit(occupancy, region_cell_count) };
+
+				if (tree_dir_cell_i != -1) {
+					Vector2i gpos{ dir_size_to_pos[dir * MAX_CELL_COUNT + tree_dir_cell_i] };
+					// actually add it with the pcg
+					continue; // go to add the next secondary
+				}
+
+				// attempt the current direction 
+				
 			}
 		}
 
