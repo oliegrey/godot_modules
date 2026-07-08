@@ -46,7 +46,7 @@ void Region::_bind_methods() {
 	);
 	ClassDB::bind_static_method("Region", D_METHOD("finalize"), &Region::finalize);
 
-	ClassDB::bind_method(D_METHOD("generate_zone", "rng", "pcg"), Region::generate_zone);
+	ClassDB::bind_static_method("Region", D_METHOD("generate_zone", "rng", "pcg"), &Region::generate_zone);
 }
 
 void Region::initialize(Vector2i seg_g_size) {
@@ -102,7 +102,7 @@ Ref<Region> Region::create(
 
 		CRASH_BAD_INDEX(inv_direction * region->m_cell_count, MAX_CELL_COUNT);
 		m_region_tree[inv_direction * region->m_cell_count].push_back(region);
-		m_region_tree_occ[inv_direction] &= 1 << (region->m_cell_count - 1);
+		m_region_tree_occ[inv_direction] &= 1ull << (region->m_cell_count - 1);
 	}
 
 	return region;
@@ -184,10 +184,10 @@ void Region::generate_zone(
 ) {
 	Ref<BitGrid2D> occ{ pcg->generative_occupancy };
 
-	uint32_t primary_i{ rng->randi_range(0, m_primary_regions.size() - 1) };
+	int primary_i{ rng->randi_range(0, m_primary_regions.size() - 1) };
 	Ref<Region> primary{ m_primary_regions[primary_i] };
 
-	uint32_t rand_cell_i{ rng->randi_range(0, m_seg_cell_count) };
+	int rand_cell_i{ rng->randi_range(0, m_seg_cell_count) };
 	const Vector2i p_g_size{ primary->g_size_inclusive };
 	const int p_cell_i{ occ->find_area_in_state(p_g_size, rand_cell_i, rand_cell_i - 1) };
 	auto p_gpos{ Vector2i(p_cell_i % m_seg_g_size.x, p_cell_i / m_seg_g_size.x) };
@@ -201,13 +201,13 @@ void Region::generate_zone(
 	std::array<std::array<Vector2i, 64>, 4> dir_size_gpos{};
 
 	
-	std::array<PackedFloat32Array, Direction::MAX> weights;
+	std::array<PackedFloat32Array, Direction::DIRECTION_MAX> weights;
 
-	for (int dir{ 0 }; dir < Direction::MAX; ++dir) {
+	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
 		weights[dir].resize(m_secondary_regions.size());
 		RegionVector group{ m_dir_to_region[dir] };
 
-		int j{ 0 };
+		size_t j{ 0 };
 		for (; j < group.size(); ++j) {
 			Ref<Region> secondary{ group[j] };
 			if (group[j]->threshold > level) {
@@ -218,20 +218,20 @@ void Region::generate_zone(
 		weights[dir].resize(j);
 	}
 
-	uint32_t secondary_count{ rng->randi_range(0, max_secondary_count) };
+	int secondary_count{ rng->randi_range(0, max_secondary_count) };
 
 	for (int i{ 0 }; i < secondary_count; ++i) {
-		const int rand_dir{ rng->randi_range(0, Direction::MAX - 1) };
-		const int max_group_i{ weights[rand_dir].size() };
-		const int rand_i{ rng->rand_weighted(weights[rand_dir]) };
+		const int rand_dir{ rng->randi_range(0, Direction::DIRECTION_MAX - 1) };
+		const int64_t max_group_i{ weights[rand_dir].size() };
+		const int64_t rand_i{ rng->rand_weighted(weights[rand_dir]) };
 		
-		for (int dir_offset{ 0 }; dir_offset < Direction::MAX; ++dir_offset) {
-			int dir{ (rand_dir + dir_offset) % Direction::MAX };
+		for (int dir_offset{ 0 }; dir_offset < Direction::DIRECTION_MAX; ++dir_offset) {
+			int dir{ (rand_dir + dir_offset) % Direction::DIRECTION_MAX };
 			RegionVector group{ m_dir_to_region[dir] };
 
 			// max_group_i limits the sorted list based on threshold value
 			for (int group_offset{ 0 }; group_offset < max_group_i; ++group_offset) {
-				int group_i{ (rand_i + group_offset) % max_group_i };
+				int64_t group_i{ (rand_i + group_offset) % max_group_i };
 				Ref<Region> secondary{ group[group_i] };
 
 				secondary->g_size_inclusive;
@@ -245,7 +245,7 @@ void Region::generate_zone(
 
 
 	const int MAX_ATTEMPTS{ 1 };
-	LocalVector<Ref<Region>> secondary_rejects {}
+	LocalVector<Ref<Region>> secondary_rejects{};
 
 	// check already scanned edges hashmap and if not inside, go to the tree
 	// start from random edge then wrap around the list, checking occupancy
@@ -270,12 +270,4 @@ void Region::generate_zone(
 
 	//// starting regions to build off of
 	//inline static LocalVector<Ref<Region>> m_primary_regions;
-}
-
-bool Region::try_place_secondary(Ref<Region>) {
-	
-}
-
-LocalVector<Ref<Region>> get_rand_secondaries() {
-
 }

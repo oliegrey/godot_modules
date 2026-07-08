@@ -82,8 +82,8 @@ void BitGrid2D::_bind_methods() {
 		DEFVAL(true)
 	);
 	ClassDB::bind_method(
-		D_METHOD("get_max_area_in_state", "origin", "search_size"),
-		&BitGrid2D::get_max_area_in_state
+		D_METHOD("find_anchored_unset_areas_in_bounds", "origin", "search_size", "anchor_dir"),
+		&BitGrid2D::find_anchored_unset_areas_in_bounds
 	);
 
 	ClassDB::bind_method(
@@ -307,7 +307,7 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 			origin_delta[1 - hist_axis] = bar_i;
 
 			const int cell_i{ gpos_to_cell_i(hist_origin + origin_delta) };
-			const bool is_cell_set{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
+			const bool is_cell_set{ ((bitmap[cell_i / 8] >> (cell_i % 8)) & 1) == 1 };
 			if (is_cell_set) {
 				break;
 			}

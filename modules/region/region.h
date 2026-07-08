@@ -16,13 +16,13 @@ class Region : public RefCounted {
 public:
 	enum Slot { PRIMARY, SECONDARY };
 	enum Direction {
-		NONE = -1, UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, MAX = 4
+		NONE = -1, UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, DIRECTION_MAX = 4
 	};
 
 private:
 	inline static const Vector2i MAX_G_SIZE{ Vector2i(8, 8) };
 	inline static const int MAX_CELL_COUNT{ 64 };
-	inline static const int FLAT_TREE_SIZE{ MAX_CELL_COUNT * Direction::MAX };
+	inline static const int FLAT_TREE_SIZE{ MAX_CELL_COUNT * Direction::DIRECTION_MAX };
 
 	inline static Vector2i m_seg_g_size;
 	inline static int m_seg_cell_count;
@@ -32,12 +32,12 @@ private:
 	// RegionVector ordered by threshold so its easy to iterate within bounds
 	inline static std::array<RegionVector, FLAT_TREE_SIZE> m_region_tree;
 	// bitmap to find the next size that has matching regions
-	inline static std::array<uint64_t, Direction::MAX> m_region_tree_occ;
+	inline static std::array<uint64_t, Direction::DIRECTION_MAX> m_region_tree_occ;
 
 	// attachment direction (already placed regions perspective) [0 - 3] -> region
 	// to get a random region to test in a free direction
 	// RegionVector ordered by threshold so its easy to iterate within bounds
-	inline static std::array<RegionVector, Direction::MAX> m_dir_to_region;
+	inline static std::array<RegionVector, Direction::DIRECTION_MAX> m_dir_to_region;
 
 	// starting regions to build off of
 	// ordered by threshold so its easy to iterate within bounds

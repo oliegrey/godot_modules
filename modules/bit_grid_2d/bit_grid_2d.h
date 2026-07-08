@@ -9,7 +9,7 @@ class BitGrid2D : public RefCounted {
 	GDCLASS(BitGrid2D, RefCounted);
 
 public:
-	enum Direction {NONE = -1, UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, MAX = 4};
+	enum Direction {NONE = -1, UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, DIRECTION_MAX = 4};
 	enum Axis {X = 0, Y = 1};
 
 private:
@@ -72,3 +72,6 @@ public:
 		bool get_unset = true
 	);
 };
+
+VARIANT_ENUM_CAST(BitGrid2D::Direction);
+VARIANT_ENUM_CAST(BitGrid2D::Axis);
