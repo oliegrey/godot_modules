@@ -158,6 +158,11 @@ void Region::finalize() {
 			++cell_i;
 		}
 	}
+
+	m_secondary_weights.resize(m_secondary_regions.size());
+	for (int i{ 0 }; i < m_secondary_regions.size(); ++i) {
+		m_secondary_weights.set(i, m_secondary_regions[i]->spawn_weight);
+	}
 }
 
 int Region::get_next_set_bit(uint64_t bitmap, const int start_i) {
@@ -166,8 +171,6 @@ int Region::get_next_set_bit(uint64_t bitmap, const int start_i) {
 	if (masked_bitmap == 0) { return -1; }
 	return ctz64(masked_bitmap);
 }
-
-//Ref<Region> search_tree
 
 void Region::generate_zone(
 	Ref<RandomNumberGenerator> rng,
@@ -194,23 +197,31 @@ void Region::generate_zone(
 	std::array<std::array<Vector2i, 64>, 4> dir_size_gpos{};
 
 	
-	std::array<PackedFloat32Array, Direction::DIRECTION_MAX> dir_weights;
+	//std::array<PackedFloat32Array, Direction::DIRECTION_MAX> dir_weights;
 
-	// create lists of weights for the group of possible regions for each direction
-	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
-		dir_weights[dir].resize(m_secondary_regions.size());
-		RegionVector group{ m_dir_to_region[dir] };
+	//// create lists of weights for the group of possible regions for each direction
+	//for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
+	//	dir_weights[dir].resize(m_secondary_regions.size());
+	//	RegionVector group{ m_dir_to_region[dir] };
 
-		size_t j{ 0 };
-		for (; j < group.size(); ++j) {
-			Ref<Region> secondary{ group[j] };
-			if (group[j]->threshold > level) {
-				break;
-			}
-			dir_weights[dir].set(j, secondary->spawn_weight);
-		}
-		dir_weights[dir].resize(j);
+	//	size_t j{ 0 };
+	//	for (; j < group.size(); ++j) {
+	//		Ref<Region> secondary{ group[j] };
+	//		if (group[j]->threshold > level) {
+	//			break;
+	//		}
+	//		dir_weights[dir].set(j, secondary->spawn_weight);
+	//	}
+	//	dir_weights[dir].resize(j);
+	//}
+
+	
+	int threshold_i{ 0 };
+	for (; threshold_i < m_secondary_regions.size(); ++threshold_i) {
+		if (m_secondary_regions[threshold_i]->threshold > level) { break; }
 	}
+	// dont need to slice this if i make my own random weight function
+	PackedFloat32Array secondary_weights{ m_secondary_weights.slice(0, threshold_i) };
 
 	int target_secondary_count{ rng->randi_range(0, max_secondary_count) };
 
@@ -227,48 +238,47 @@ void Region::generate_zone(
 	// if not then add it to the position tree, try again until exhausted, add region to waiting list
 	// if it does then place it
 
+	const int MAX_TRIES{ 30 };
+	int attempts{ 0 };
+
 	// dir * max_size + size -> position
 	std::array<Vector2i, FLAT_TREE_SIZE> dir_size_to_pos;
 	std::array<uint64_t, Direction::DIRECTION_MAX> dir_size_to_pos_occ{};
 
 	for (int i{ 0 }; i < target_secondary_count; ++i) {
-		const int rand_dir{ rng->randi_range(0, Direction::DIRECTION_MAX - 1) };
-		const int64_t max_group_i{ dir_weights[rand_dir].size() };
-		const int64_t rand_i{ rng->rand_weighted(dir_weights[rand_dir]) };
-		
-		for (int dir_offset{ 0 }; dir_offset < Direction::DIRECTION_MAX; ++dir_offset) {
-			int dir{ (rand_dir + dir_offset) % Direction::DIRECTION_MAX };
-			RegionVector dir_group{ m_dir_to_region[dir] };
-
-			// max_group_i limits the sorted list based on threshold value
-			for (int group_offset{ 0 }; group_offset < max_group_i; ++group_offset) {
-				const int64_t group_i{ (rand_i + group_offset) % max_group_i };
-				const Ref<Region> secondary{ dir_group[group_i] };
-
-				const Vector2i secondary_size_inc{ secondary->g_size_inclusive };
-				const int region_cell_count{ secondary_size_inc.x * secondary_size_inc.y };
-				const int64_t occupancy{ dir_size_to_pos_occ[dir] };
-				const int tree_dir_cell_i{ get_next_set_bit(occupancy, region_cell_count) };
-
-				if (tree_dir_cell_i != -1) {
-					Vector2i gpos{ dir_size_to_pos[dir * MAX_CELL_COUNT + tree_dir_cell_i] };
-					// actually add it with the pcg
-					continue; // go to add the next secondary
-				}
-
-				// attempt the current direction 
-				
-			}
-		}
-
-		
-
 		
 	}
 
+	//for (int i{ 0 }; i < target_secondary_count; ++i) {
+	//	const int rand_dir{ rng->randi_range(0, Direction::DIRECTION_MAX - 1) };
+	//	const int64_t max_group_i{ dir_weights[rand_dir].size() };
+	//	
+	//	for (int dir_offset{ 0 }; dir_offset < Direction::DIRECTION_MAX; ++dir_offset) {
+	//		const int dir{ (rand_dir + dir_offset) % Direction::DIRECTION_MAX };
+	//		const RegionVector dir_group{ m_dir_to_region[dir] };
+	//		const int64_t rand_group_i{ rng->rand_weighted(dir_weights[dir]) };
 
-	const int MAX_ATTEMPTS{ 1 };
-	LocalVector<Ref<Region>> secondary_rejects{};
+	//		// max_group_i limits the sorted list based on threshold value
+	//		for (int group_offset{ 0 }; group_offset < max_group_i; ++group_offset) {
+	//			const int64_t group_i{ (rand_group_i + group_offset) % max_group_i };
+	//			const Ref<Region> secondary{ dir_group[group_i] };
+
+	//			const Vector2i secondary_size_inc{ secondary->g_size_inclusive };
+	//			const int region_cell_count{ secondary_size_inc.x * secondary_size_inc.y };
+	//			const int64_t occupancy{ dir_size_to_pos_occ[dir] };
+	//			const int tree_dir_cell_i{ get_next_set_bit(occupancy, region_cell_count) };
+
+	//			if (tree_dir_cell_i != -1) {
+	//				Vector2i gpos{ dir_size_to_pos[dir * MAX_CELL_COUNT + tree_dir_cell_i] };
+	//				// actually add it with the pcg
+	//				continue; // go to add the next secondary
+	//			}
+
+	//			// attempt the current direction 
+	//			
+	//		}
+	//	}	
+	//}
 
 	// check already scanned edges hashmap and if not inside, go to the tree
 	// start from random edge then wrap around the list, checking occupancy

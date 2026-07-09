@@ -44,6 +44,7 @@ private:
 	inline static RegionVector m_primary_regions{};
 	// ordered by threshold so its easy to iterate within bounds
 	inline static RegionVector m_secondary_regions{};
+	inline static PackedFloat32Array m_secondary_weights{};
 
 	int m_cell_count;
 
