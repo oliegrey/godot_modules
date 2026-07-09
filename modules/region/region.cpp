@@ -238,13 +238,15 @@ void Region::add_free_edge_gpos(
 	}
 }
 
+// we need to come back to add the stone edges
+// then we need to add the fillings
 void Region::generate_zone(
 	Ref<RandomNumberGenerator> rng,
 	Ref<PCG> pcg,
 	const int level,
 	const int max_secondary_count
 ) {
-	Ref<BitGrid2D> occ{ pcg->generative_occupancy };
+	Ref<BitGrid2D> gen_occupancy{ pcg->generative_occupancy };
 
 	// get a random weighted primary region
 	const int bnd{ m_primary_weights.size() };
@@ -254,7 +256,7 @@ void Region::generate_zone(
 	// find a free area that will fit the region, starting the search at a random offset
 	int rand_cell_i{ rng->randi_range(0, m_seg_cell_count) };
 	const Vector2i p_g_size{ primary->g_size_inclusive };
-	const int p_cell_i{ occ->find_area_in_state(p_g_size, rand_cell_i, rand_cell_i - 1) };
+	const int p_cell_i{ gen_occupancy->find_area_in_state(p_g_size, rand_cell_i, rand_cell_i - 1) };
 	auto p_gpos{ Vector2i(p_cell_i % m_seg_g_size.x, p_cell_i / m_seg_g_size.x) };
 
 	// place dug tiles in the primaries cells
@@ -290,15 +292,95 @@ void Region::generate_zone(
 	// a tree to find grid positions that have needed free area sizes related to directions
 	// dir * max size in cells + size in cells -> grid position
 	std::array<Vector2i, FLAT_TREE_SIZE> dir_size_to_gpos;
-	std::array<uint64_t, Direction::DIRECTION_MAX> dir_size_to_gpos_occ{};
+	std::array<uint64_t, Direction::DIRECTION_MAX> dir_size_occ{};
 
+	Ref<Region> prev_region{ primary };
 
 	for (int i{ 0 }; i < target_secondary_count; ++i) {
-		Ref<Region> candidate{
+		const int secondary_i{
 			rand_weighted_bound(rng, m_secondary_weights, threshold_i, secondary_weight_sum)
 		};
 
-		get_next_set_bit(dir_size_to_gpos_occ[]);
+		Ref<Region> secondary{ m_secondary_regions[secondary_i] };
+
+		for (int dir_i : secondary->joining_sides) {
+			Direction dir{ static_cast<Direction>(dir_i) };
+			const Vector2i g_size_inc{ secondary->g_size_inclusive };
+
+			// look for it in the tree of already searched and catalogued areas
+			const int size_i{ get_next_set_bit(dir_size_occ[dir], size_i) };
+			if (size_i != -1) {
+				const int dir_offset{ dir * MAX_CELL_COUNT };
+				Vector2i gpos{ dir_size_to_gpos[dir_offset + size_i] };
+				pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, g_size_inc);
+				continue;
+			}
+
+			const Vector2i prev_g_size{ prev_region->g_size };
+
+			// otherwise search possible areas
+			for (Vector2i gpos : dir_to_free_edge_gpos[dir]) {
+
+				Vector2i search_origin{ gpos };
+				Vector2i search_size{8, 8};
+
+				if (dir == Direction::UP) {
+					search_origin.y -= 7;
+					search_size.x = g_size.x + prev_g_size.x / 2;
+				} else if (dir == Direction::DOWN) {
+					search_origin.y += 7;
+					search_size.x = g_size.x + prev_g_size.x / 2;
+					search_origin.x -= search_size.x;
+				} else if (dir == Direction::LEFT) {
+					search_origin.x -= 7;
+					search_size.y = g_size.y + prev_g_size.y / 2;
+				} else if (dir == Direction::RIGHT) {
+					search_origin.x += 7;
+					search_size.y = g_size.y + prev_g_size.y / 2;
+					search_origin.y -= search_size.y;
+				}
+				
+				PackedVector2Array org_size{
+					gen_occupancy->find_anchored_unset_areas_in_bounds(
+						search_origin,
+						search_size,
+						static_cast<BitGrid2D::Direction>(dir),
+						g_size
+					)
+				};
+
+				if (org_size.size() < 2) {
+					// edge is full
+					// remove gpos
+					continue;
+				}
+
+				if (org_size[1] == g_size) {
+					// set the thing
+					// remove gpos
+					continue;
+				}
+
+				for (int i{ 0 }; i < org_size.size() / 2; i += 2) {
+					Vector2i found_origin{ org_size[i] };
+					Vector2i found_size{ org_size[i + 1] };
+
+					if ( // skip result if it is disconnected from the previous region
+						(dir == Direction::UP && found_origin.x > gpos.x + prev_g_size.x - 1) ||
+						(dir == Direction::DOWN && found_origin.x < gpos.x) ||
+						(dir == Direction::LEFT && found_origin.y < gpos.y) ||
+						(dir == Direction::RIGHT && found_origin.y > gpos.y + prev_g_size.y - 1)
+					) {
+						continue;
+					}
+				}
+			}
+
+			// if the possible area isnt large enough, add the results to dir_size_to_gpos
+			// and remove from dir_to_free_edge_gpos
+			// both are vectors, so we use the swap end and remove end for fast removal
+		}
+		
 		// we need to track which we have already searched so we dont search again right?
 	}
 

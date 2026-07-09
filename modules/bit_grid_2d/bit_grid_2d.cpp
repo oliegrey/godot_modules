@@ -82,8 +82,14 @@ void BitGrid2D::_bind_methods() {
 		DEFVAL(true)
 	);
 	ClassDB::bind_method(
-		D_METHOD("find_anchored_unset_areas_in_bounds", "origin", "search_size", "anchor_dir"),
-		&BitGrid2D::find_anchored_unset_areas_in_bounds
+		D_METHOD(
+			"find_anchored_unset_areas_in_bounds",
+			"origin",
+			"search_size",
+			"anchor_dir",
+			"wanted_size"
+		),
+		&BitGrid2D::find_anchored_unset_areas_in_bounds, DEFVAL(Vector2i())
 	);
 
 	ClassDB::bind_method(
@@ -256,9 +262,15 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 	return true;
 }
 
-// origin is top left cell of search size
+// CAREFUL: HALF OF THIS IS AI DOGSHIT
+// origin is top left cell of search size.
+// If wanted_size is left at (0,0), the full histogram is built and the
+// single largest unset rectangle per unbroken run is returned (same
+// behavior as the original two-pass version). If wanted_size is given,
+// this returns as soon as a rectangle fitting at least wanted_size is
+// found, without finishing the histogram or the sweep.
 PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
-		Vector2i origin, Vector2i search_size, const Direction anchor_dir
+	Vector2i origin, Vector2i search_size, const Direction anchor_dir, Vector2i wanted_size
 ) const {
 	ERR_FAIL_COND_V_MSG(
 		search_size.x <= 0 || search_size.y <= 0,
@@ -269,6 +281,12 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 		origin.x + search_size.x > grid_size.x ||
 		origin.y + search_size.y > grid_size.y,
 		PackedVector2Array(), "search would be out of grid bounds"
+	);
+
+	const bool has_wanted{ wanted_size.x > 0 && wanted_size.y > 0 };
+	ERR_FAIL_COND_V_MSG(
+		has_wanted && (wanted_size.x > search_size.x || wanted_size.y > search_size.y),
+		PackedVector2Array(), "wanted size larger than search size"
 	);
 
 	Vector2i hist_origin{ origin };
@@ -299,10 +317,9 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 
 	const int hist_max_dist{ search_size[hist_axis] };
 	const int max_bar_count{ search_size[1 - hist_axis] };
+	const int wanted_height{ has_wanted ? wanted_size[hist_axis] : 0 };
+	const int wanted_width{ has_wanted ? wanted_size[1 - hist_axis] : 0 };
 
-	// gpos_to_cell_i is affine in x/y (cell_i = y*grid_size.x + x, or similar),
-	// so instead of reconstructing a Vector2i and calling it per cell, derive
-	// the constant strides once and walk cell_i with plain integer adds.
 	const int base_cell_i{ gpos_to_cell_i(hist_origin) };
 	Vector2i axis_unit;
 	axis_unit[hist_axis] = 1;
@@ -311,43 +328,42 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 	const int step_axis{ (gpos_to_cell_i(hist_origin + axis_unit) - base_cell_i) * hist_polarity };
 	const int step_bar{ gpos_to_cell_i(hist_origin + bar_unit) - base_cell_i };
 
-	// Pass 1: build the histogram of anchor-distances for each bar.
+	// Heights are computed on demand and fed straight into the stack sweep
+	// in the same loop. In "wanted" mode this lets a qualifying rectangle
+	// short-circuit before the rest of the histogram is ever built. In
+	// "find largest" mode it behaves like the original two-pass version,
+	// just fused into one loop.
 	Vector<int> heights;
 	heights.resize(max_bar_count);
 	int *heights_ptr{ heights.ptrw() };
 	const uint8_t *bitmap_ptr{ bitmap.ptr() };
 
-	int row_cell_i{ base_cell_i };
-	for (int bar_i{ 0 }; bar_i < max_bar_count; ++bar_i, row_cell_i += step_bar) {
-		int cell_i{ row_cell_i };
-		int hist_dist{ 0 };
-		for (; hist_dist < hist_max_dist; ++hist_dist, cell_i += step_axis) {
-			const bool is_cell_set{ ((bitmap_ptr[cell_i >> 3] >> (cell_i & 7)) & 1) == 1 };
-			if (is_cell_set) {
-				break;
-			}
-		}
-		heights_ptr[bar_i] = hist_dist;
-	}
-
-	// Pass 2: monotonic stack, but instead of emitting every popped
-	// rectangle, keep only the largest-area rectangle seen within each
-	// unbroken run of nonzero bars, and flush it when the run ends.
-	PackedVector2Array result{};
-
-	// Plain preallocated buffer used as a manual stack -- avoids the
-	// COW/bounds-check overhead of Vector::push_back/remove_at in a hot loop.
 	Vector<int> stack_idx;
 	stack_idx.resize(max_bar_count + 1);
 	int *stack_ptr{ stack_idx.ptrw() };
 	int stack_top{ -1 }; // index of the top element, -1 == empty
 
+	PackedVector2Array result{};
+
 	int best_area{ 0 };
 	Vector2i best_origin{};
 	Vector2i best_size{};
 
-	for (int bar_i{ 0 }; bar_i <= max_bar_count; ++bar_i) {
-		const int cur_height{ (bar_i < max_bar_count) ? heights_ptr[bar_i] : 0 };
+	int row_cell_i{ base_cell_i };
+	for (int bar_i{ 0 }; bar_i <= max_bar_count; ++bar_i, row_cell_i += step_bar) {
+		int cur_height{ 0 };
+		if (bar_i < max_bar_count) {
+			int cell_i{ row_cell_i };
+			int hist_dist{ 0 };
+			for (; hist_dist < hist_max_dist; ++hist_dist, cell_i += step_axis) {
+				const bool is_cell_set{ ((bitmap_ptr[cell_i >> 3] >> (cell_i & 7)) & 1) == 1 };
+				if (is_cell_set) {
+					break;
+				}
+			}
+			heights_ptr[bar_i] = hist_dist;
+			cur_height = hist_dist;
+		}
 
 		while (stack_top >= 0 && heights_ptr[stack_ptr[stack_top]] >= cur_height) {
 			const int top{ stack_ptr[stack_top] };
@@ -358,21 +374,33 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 			}
 			const int left{ stack_top < 0 ? 0 : stack_ptr[stack_top] + 1 };
 			const int width{ bar_i - left };
-			const int area{ height * width };
-			if (area > best_area) {
-				best_area = area;
-				best_origin[hist_axis] = hist_origin[hist_axis];
-				best_origin[1 - hist_axis] = hist_origin[1 - hist_axis] + left;
-				best_size[hist_axis] = height;
-				best_size[1 - hist_axis] = width;
+
+			if (has_wanted) {
+				if (height >= wanted_height && width >= wanted_width) {
+					Vector2i found_origin{};
+					Vector2i found_size{};
+					found_origin[hist_axis] = hist_origin[hist_axis];
+					found_origin[1 - hist_axis] = hist_origin[1 - hist_axis] + left;
+					found_size[hist_axis] = wanted_height;
+					found_size[1 - hist_axis] = wanted_width;
+
+					result.push_back(found_origin);
+					result.push_back(found_size);
+					return result;
+				}
+			} else {
+				const int area{ height * width };
+				if (area > best_area) {
+					best_area = area;
+					best_origin[hist_axis] = hist_origin[hist_axis];
+					best_origin[1 - hist_axis] = hist_origin[1 - hist_axis] + left;
+					best_size[hist_axis] = height;
+					best_size[1 - hist_axis] = width;
+				}
 			}
 		}
 
-		// A zero-height bar (or the end-of-array sentinel) always drains
-		// the stack completely, since every real height is >= 0. That
-		// marks the end of the current unbroken run, so flush its best
-		// rectangle (if any) and reset for the next run.
-		if (cur_height <= 0) {
+		if (!has_wanted && cur_height <= 0) {
 			if (best_area > 0) {
 				result.push_back(best_origin);
 				result.push_back(best_size);
@@ -383,6 +411,8 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 		stack_ptr[++stack_top] = bar_i;
 	}
 
+	// has_wanted and nothing fit -> empty result.
+	// !has_wanted -> result already holds each run's best rectangle.
 	return result;
 }
 

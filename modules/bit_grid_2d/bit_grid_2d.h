@@ -47,7 +47,10 @@ public:
 	bool is_area_free(const Vector2i origin, const Vector2i) const;
 	void set_area(const Vector2i gpos, const Vector2i size);
 	PackedVector2Array find_anchored_unset_areas_in_bounds(
-		Vector2i origin, Vector2i bounds_size, const Direction anchor_dir
+		Vector2i origin,
+		Vector2i search_size,
+		Direction anchor_dir,
+		Vector2i wanted_size = Vector2i()
 	) const;
 
 	int find_cell_in_state(
