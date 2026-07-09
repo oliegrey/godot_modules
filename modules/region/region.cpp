@@ -171,12 +171,12 @@ void Region::finalize() {
 	}
 
 	m_secondary_weights.resize(m_secondary_regions.size());
-	for (int i{ 0 }; i < m_secondary_regions.size(); ++i) {
+	for (uint64_t i{ 0 }; i < m_secondary_regions.size(); ++i) {
 		m_secondary_weights.set(i, m_secondary_regions[i]->spawn_weight);
 	}
 
 	m_primary_weights.resize(m_primary_regions.size());
-	for (int i{ 0 }; i < m_primary_regions.size(); ++i) {
+	for (uint64_t i{ 0 }; i < m_primary_regions.size(); ++i) {
 		m_primary_weights.set(i, m_primary_regions[i]->spawn_weight);
 	}
 	m_primary_weight_sum = get_weight_sum_bounded(m_primary_weights, m_primary_weights.size());
@@ -189,7 +189,7 @@ int Region::get_next_set_bit(uint64_t bitmap, const int start_i) {
 	return ctz64(masked_bitmap);
 }
 
-int Region::get_weight_sum_bounded(
+float Region::get_weight_sum_bounded(
 	const PackedFloat32Array &p_weights, const int exl_upper_bound
 ) {
 	const float *weights = p_weights.ptr();
@@ -204,7 +204,7 @@ int Region::rand_weighted_bound(
 	const Ref<RandomNumberGenerator> rng,
 	const PackedFloat32Array &p_weights,
 	const int exl_upper_bound,
-	const int weights_sum
+	const float weights_sum
 ) {
 	const float *weights = p_weights.ptr();
 	float remaining_distance = rng->randf() * weights_sum;
@@ -225,16 +225,17 @@ void Region::add_free_edge_gpos(
 		Vector2i edge_gpos{ gpos };
 
 		if (dir == Direction::UP) {
-			gpos.y -= 1;
+			edge_gpos.y -= 1;
 		} else if (dir == Direction::DOWN) {
-			gpos.y += size.y;
+			edge_gpos.y += size.y;
 		} else if (dir == Direction::LEFT) {
-			gpos.x -= 1;
+			edge_gpos.x -= 1;
 		} else if (dir == Direction::RIGHT) {
-			gpos.x += size.x;
+			edge_gpos.x += size.x;
 		}
 
-		dir_to_free_edge_gpos[dir].push_back(gpos);
+		dir_to_free_edge_gpos[dir].push_back(edge_gpos);
+		dir_to_free_edge_gpos[dir].push_back(size);
 	}
 }
 
@@ -248,163 +249,201 @@ void Region::generate_zone(
 ) {
 	Ref<BitGrid2D> gen_occupancy{ pcg->generative_occupancy };
 
+	// how many secondaries we want
+	int target_secondary_count{ rng->randi_range(0, max_secondary_count) };
+
+	// free grid position look up based on direction requirement; dir -> [free edge gpos, g_size, ...]
+	DirVectors dir_to_free_edge_gpos{};
+	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
+		dir_to_free_edge_gpos[dir].reserve((target_secondary_count * 4 + 4) * 2);
+	}
+
 	// get a random weighted primary region
-	const int bnd{ m_primary_weights.size() };
+	const int64_t bnd{ m_primary_weights.size() };
 	const int primary_i{ rand_weighted_bound(rng, m_primary_weights, bnd, m_primary_weight_sum) };
-	Ref<Region> primary{ m_primary_regions[primary_i] };
+	Ref<Region> p_region{ m_primary_regions[primary_i] };
 
 	// find a free area that will fit the region, starting the search at a random offset
-	int rand_cell_i{ rng->randi_range(0, m_seg_cell_count) };
-	const Vector2i p_g_size{ primary->g_size_inclusive };
+	int rand_cell_i{ rng->randi_range(0, m_seg_cell_count - 1) };
+	const Vector2i p_g_size{ p_region->g_size_inclusive };
 	const int p_cell_i{ gen_occupancy->find_area_in_state(p_g_size, rand_cell_i, rand_cell_i - 1) };
 	auto p_gpos{ Vector2i(p_cell_i % m_seg_g_size.x, p_cell_i / m_seg_g_size.x) };
 
 	// place dug tiles in the primaries cells
-	const PackedInt32Array LAYER_OFFSETS{ 0 };
-	const PackedInt32Array TILE_INDEXES{ 0 };
-	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, p_gpos, p_g_size);
-
-	// how many secondaries we want
-	int target_secondary_count{ rng->randi_range(0, max_secondary_count) };
-
-	// free grid position look up based on direction requirement; dir -> [free edge gpos, ...]
-	std::array<LocalVector<Vector2i>, Direction::DIRECTION_MAX> dir_to_free_edge_gpos{};
-	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
-		dir_to_free_edge_gpos[dir].reserve(target_secondary_count * 4 + 4);
-	}
-
-	// add primaries free edge grid positions
-	add_free_edge_gpos(primary, p_gpos, dir_to_free_edge_gpos);
+	add_region(p_region, pcg, p_gpos, dir_to_free_edge_gpos);
 
 	// get threshold from ordered secondary regions to determine cutoff
-	int threshold_i{ 0 };
+	uint64_t threshold_i{ 0 };
 	for (; threshold_i < m_secondary_regions.size(); ++threshold_i) {
 		if (m_secondary_regions[threshold_i]->threshold > level) { break; }
 	}
 
-	int secondary_weight_sum{ get_weight_sum_bounded(m_secondary_weights, threshold_i) };
+	float secondary_weight_sum{ get_weight_sum_bounded(m_secondary_weights, threshold_i) };
 
-	// amount of times to reiterate over failed region additions after adding other regions
-	const int MAX_ATTEMPTS{ 3 };
-	LocalVector<Ref<Region>> region_rejects{};
-	region_rejects.reserve(m_secondary_regions.size());
+	LocalVector<Ref<Region>> s_region_rejects{};
+	s_region_rejects.reserve(m_secondary_regions.size());
 
 	// a tree to find grid positions that have needed free area sizes related to directions
 	// dir * max size in cells + size in cells -> grid position
 	std::array<Vector2i, FLAT_TREE_SIZE> dir_size_to_gpos;
 	std::array<uint64_t, Direction::DIRECTION_MAX> dir_size_occ{};
 
-	Ref<Region> prev_region{ primary };
-
 	for (int i{ 0 }; i < target_secondary_count; ++i) {
 		const int secondary_i{
 			rand_weighted_bound(rng, m_secondary_weights, threshold_i, secondary_weight_sum)
 		};
 
-		Ref<Region> secondary{ m_secondary_regions[secondary_i] };
+		Ref<Region> s_region{ m_secondary_regions[secondary_i] };
 
-		for (int dir_i : secondary->joining_sides) {
-			Direction dir{ static_cast<Direction>(dir_i) };
-			const Vector2i g_size_inc{ secondary->g_size_inclusive };
+		bool is_placed{ try_place_s_region(s_region, dir_size_occ, dir_size_to_gpos, pcg, dir_to_free_edge_gpos, gen_occupancy) };
 
-			// look for it in the tree of already searched and catalogued areas
-			const int size_i{ get_next_set_bit(dir_size_occ[dir], size_i) };
-			if (size_i != -1) {
-				const int dir_offset{ dir * MAX_CELL_COUNT };
-				Vector2i gpos{ dir_size_to_gpos[dir_offset + size_i] };
-				pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, g_size_inc);
+		if (!is_placed) {
+			s_region_rejects.push_back(s_region);
+		}
+	}
+
+	const int MAX_ATTEMPTS{ 3 };
+
+	RegionVector temp_rejects{};
+
+	for (int attempt{ 0 }; attempt < MAX_ATTEMPTS; ++attempt) {
+
+		if (attempt > 0) {
+			s_region_rejects = temp_rejects;
+		}
+
+		temp_rejects.resize(0);
+
+		for (Ref<Region> s_region: s_region_rejects) {
+
+			bool success {
+				try_place_s_region(
+					s_region,
+					dir_size_occ,
+					dir_size_to_gpos,
+					pcg,
+					dir_to_free_edge_gpos,
+					gen_occupancy
+				)
+			};
+			if (!success) {
+				temp_rejects.push_back(s_region);
+			}
+		}
+
+		if (temp_rejects.size() == s_region_rejects.size()) {
+			break; // impossible to get any more to place, no point retrying
+		}
+	}
+}
+
+bool Region::try_place_s_region(
+	Ref<Region> s_region,
+	std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
+	std::array<Vector2i, FLAT_TREE_SIZE> &dir_size_to_gpos,
+	Ref<PCG> pcg,
+	DirVectors &dir_to_free_edge_gpos,
+	Ref<BitGrid2D> gen_occupancy
+) {
+	for (int dir_i : s_region->joining_sides) {
+		Direction dir{ static_cast<Direction>(dir_i) };
+		const Vector2i g_size_inc{ s_region->g_size_inclusive };
+
+		// look for it in the tree of already searched and catalogued areas
+		const int dir_offset{ dir * MAX_CELL_COUNT };
+		const int size_i{ get_next_set_bit(dir_size_occ[dir], 0) };
+		if (size_i != -1) {
+			Vector2i gpos{ dir_size_to_gpos[dir_offset + size_i] };
+			add_region(s_region, pcg, gpos, dir_to_free_edge_gpos);
+			return true;
+		}
+
+		// otherwise search possible areas
+		// iterate backwards to make removing searched areas fast
+		int64_t gpos_i{ static_cast<int64_t>(dir_to_free_edge_gpos[dir].size()) - 2 };
+
+		if (gpos_i == -2) {
+			continue;
+		}
+
+		for (; gpos_i >= 0; gpos_i -= 2) {
+			Vector2i gpos{ dir_to_free_edge_gpos[dir][gpos_i] };
+			Vector2i prev_g_size{ dir_to_free_edge_gpos[dir][gpos_i + 1] };
+
+			// set the search origin and size so if g_size is found it will always be
+			// connected to the previous region while using the maximum search size
+			Vector2i search_origin{ gpos };
+			Vector2i search_size{ 8, 8 };
+
+			if (dir == Direction::UP) {
+				search_origin.y -= 7;
+				search_size.x = g_size_inc.x + prev_g_size.x / 2;
+			} else if (dir == Direction::DOWN) {
+				search_origin.y += 7;
+				search_size.x = g_size_inc.x + prev_g_size.x / 2;
+				search_origin.x -= search_size.x;
+			} else if (dir == Direction::LEFT) {
+				search_origin.x -= 7;
+				search_size.y = g_size_inc.y + prev_g_size.y / 2;
+			} else if (dir == Direction::RIGHT) {
+				search_origin.x += 7;
+				search_size.y = g_size_inc.y + prev_g_size.y / 2;
+				search_origin.y -= search_size.y;
+			}
+
+			PackedVector2Array org_size{
+				gen_occupancy->find_anchored_unset_areas_in_bounds(
+					search_origin,
+					search_size,
+					static_cast<BitGrid2D::Direction>(dir),
+					g_size_inc
+				)
+			};
+
+			// edge is full
+			if (org_size.size() < 2) {
 				continue;
 			}
 
-			const Vector2i prev_g_size{ prev_region->g_size };
-
-			// otherwise search possible areas
-			for (Vector2i gpos : dir_to_free_edge_gpos[dir]) {
-
-				Vector2i search_origin{ gpos };
-				Vector2i search_size{8, 8};
-
-				if (dir == Direction::UP) {
-					search_origin.y -= 7;
-					search_size.x = g_size.x + prev_g_size.x / 2;
-				} else if (dir == Direction::DOWN) {
-					search_origin.y += 7;
-					search_size.x = g_size.x + prev_g_size.x / 2;
-					search_origin.x -= search_size.x;
-				} else if (dir == Direction::LEFT) {
-					search_origin.x -= 7;
-					search_size.y = g_size.y + prev_g_size.y / 2;
-				} else if (dir == Direction::RIGHT) {
-					search_origin.x += 7;
-					search_size.y = g_size.y + prev_g_size.y / 2;
-					search_origin.y -= search_size.y;
-				}
-				
-				PackedVector2Array org_size{
-					gen_occupancy->find_anchored_unset_areas_in_bounds(
-						search_origin,
-						search_size,
-						static_cast<BitGrid2D::Direction>(dir),
-						g_size
-					)
-				};
-
-				if (org_size.size() < 2) {
-					// edge is full
-					// remove gpos
-					continue;
-				}
-
-				if (org_size[1] == g_size) {
-					// set the thing
-					// remove gpos
-					continue;
-				}
-
-				for (int i{ 0 }; i < org_size.size() / 2; i += 2) {
-					Vector2i found_origin{ org_size[i] };
-					Vector2i found_size{ org_size[i + 1] };
-
-					if ( // skip result if it is disconnected from the previous region
-						(dir == Direction::UP && found_origin.x > gpos.x + prev_g_size.x - 1) ||
-						(dir == Direction::DOWN && found_origin.x < gpos.x) ||
-						(dir == Direction::LEFT && found_origin.y < gpos.y) ||
-						(dir == Direction::RIGHT && found_origin.y > gpos.y + prev_g_size.y - 1)
-					) {
-						continue;
-					}
-				}
+			// there is enough room
+			if (org_size[1] == g_size_inc) {
+				add_region(s_region, pcg, gpos, dir_to_free_edge_gpos);
+				dir_to_free_edge_gpos[dir].resize(gpos_i);
+				return true;
 			}
 
-			// if the possible area isnt large enough, add the results to dir_size_to_gpos
-			// and remove from dir_to_free_edge_gpos
-			// both are vectors, so we use the swap end and remove end for fast removal
+			// we did not find enough room
+			for (int i{ 0 }; i < org_size.size(); i += 2) {
+				Vector2i found_origin{ org_size[i] };
+				Vector2i found_size{ org_size[i + 1] };
+
+				if ( // skip result if the area is disconnected from the previous region
+					(dir == Direction::UP && found_origin.x > gpos.x + prev_g_size.x - 1) ||
+					(dir == Direction::DOWN && found_origin.x < gpos.x) ||
+					(dir == Direction::LEFT && found_origin.y < gpos.y) ||
+					(dir == Direction::RIGHT && found_origin.y > gpos.y + prev_g_size.y - 1)
+				) {
+					continue;
+				}
+
+				const int size_i{ found_size.x * found_size.y };
+				dir_size_to_gpos[dir_offset + size_i] = found_origin;
+				dir_size_occ[dir] |= 1ull << size_i;
+			}
 		}
-		
-		// we need to track which we have already searched so we dont search again right?
+
+		dir_to_free_edge_gpos[dir].resize(0); // should retain allocation size
 	}
 
-	for (int attempt{ 0 }; attempt < MAX_ATTEMPTS; ++attempt) {
-		for (Ref<Region> region : region_rejects) {
+	return false;
+}
 
-		}
-	}
-
-
-
-	//// attachment direction [0 - 3]
-	//// -> quad size flattened [(0 * 0), ... (max * 0), ... (max * max)]
-	//// -> region
-	//// to find a region that fits after a failed test with free space
-	//// order quad size from smallest to largest so we can find the next lowest
-	//// region vector ordered by min world segment, can iterate to find the max
-	//inline static std::array<LocalVector<LocalVector<Ref<Region>>>, 4> m_region_tree;
-
-	//// attachment direction (already placed regions perspective) [0 - 3] -> region
-	//// to get a random region to test in a free direction
-	//// region vector ordered by min world segment, can iterate to find the max
-	//inline static std::array<LocalVector<Ref<Region>>, 4> m_dir_to_region;
-
-	//// starting regions to build off of
-	//inline static LocalVector<Ref<Region>> m_primary_regions;
+void Region::add_region(
+	Ref<Region> region, Ref<PCG> pcg, Vector2i gpos, DirVectors &dir_to_free_edge_gpos
+) {
+	const PackedInt32Array LAYER_OFFSETS{ 0 };
+	const PackedInt32Array TILE_INDEXES{ 0 };
+	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, region->g_size_inclusive);
+	// add primaries free edge grid positions
+	add_free_edge_gpos(region, gpos, dir_to_free_edge_gpos);
 }

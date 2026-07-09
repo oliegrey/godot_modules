@@ -7,6 +7,7 @@
 class Region;
 class RandomNumberGenerator;
 class PCG;
+class BitGrid2D;
 
 using RegionVector = LocalVector<Ref<Region>>;
 using DirVectors = std::array<LocalVector<Vector2i>, 4>;
@@ -50,7 +51,7 @@ private:
 	// ordered by threshold so its easy to iterate within bounds
 	inline static RegionVector m_primary_regions{};
 	inline static PackedFloat32Array m_primary_weights{};
-	inline static int m_primary_weight_sum{};
+	inline static float m_primary_weight_sum{};
 	// ordered by threshold so its easy to iterate within bounds
 	inline static RegionVector m_secondary_regions{};
 	inline static PackedFloat32Array m_secondary_weights{};
@@ -89,6 +90,19 @@ private:
 		Ref<Region> region, Vector2i gpos, DirVectors &dir_to_free_edge_gpos
 	);
 
+	void add_region(
+		Ref<Region> region, Ref<PCG> pcg, Vector2i gpos, DirVectors &dir_to_free_edge_gpos
+	);
+
+	bool try_place_s_region(
+		Ref<Region> s_region,
+		std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
+		std::array<Vector2i, FLAT_TREE_SIZE> &dir_size_to_gpos,
+		Ref<PCG> pcg,
+		DirVectors &dir_to_free_edge_gpos,
+		Ref<BitGrid2D> gen_occupancy
+	);
+
 protected:
 	static void _bind_methods();
 
@@ -112,7 +126,7 @@ public:
 			const int w_seg,
 			const int max_secondary_count);
 
-	static int get_weight_sum_bounded(
+	static float get_weight_sum_bounded(
 		const PackedFloat32Array &p_weights, const int exl_upper_bound
 	);
 
@@ -120,7 +134,7 @@ public:
 		const Ref<RandomNumberGenerator> rng,
 		const PackedFloat32Array &p_weights,
 		const int exl_upper_bound,
-		const int weights_sum
+		const float weights_sum
 	);
 };
 
