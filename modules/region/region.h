@@ -9,14 +9,21 @@ class RandomNumberGenerator;
 class PCG;
 
 using RegionVector = LocalVector<Ref<Region>>;
+using DirVectors = std::array<LocalVector<Vector2i>, 4>;
 
 class Region : public RefCounted {
 	GDCLASS(Region, RefCounted);
 
 public:
-	enum Slot { PRIMARY, SECONDARY };
+	enum Slot { PRIMARY,
+		SECONDARY };
 	enum Direction {
-		NONE = -1, UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, DIRECTION_MAX = 4
+		NONE = -1,
+		UP = 0,
+		DOWN = 1,
+		LEFT = 2,
+		RIGHT = 3,
+		DIRECTION_MAX = 4
 	};
 
 private:
@@ -42,6 +49,8 @@ private:
 	// starting regions to build off of
 	// ordered by threshold so its easy to iterate within bounds
 	inline static RegionVector m_primary_regions{};
+	inline static PackedFloat32Array m_primary_weights{};
+	inline static int m_primary_weight_sum{};
 	// ordered by threshold so its easy to iterate within bounds
 	inline static RegionVector m_secondary_regions{};
 	inline static PackedFloat32Array m_secondary_weights{};
@@ -61,15 +70,24 @@ public:
 private:
 	static Direction invert_direction(Direction direction) {
 		switch (direction) {
-			case Direction::UP:       return Direction::DOWN;
-			case Direction::DOWN:     return Direction::UP;
-			case Direction::LEFT:     return Direction::RIGHT;
-			case Direction::RIGHT:    return Direction::LEFT;
-			default:                  return Direction::NONE;
+			case Direction::UP:
+				return Direction::DOWN;
+			case Direction::DOWN:
+				return Direction::UP;
+			case Direction::LEFT:
+				return Direction::RIGHT;
+			case Direction::RIGHT:
+				return Direction::LEFT;
+			default:
+				return Direction::NONE;
 		}
 	}
 
 	static int get_next_set_bit(uint64_t bitmap, const int start_i);
+
+	void add_free_edge_gpos(
+		Ref<Region> region, Vector2i gpos, DirVectors &dir_to_free_edge_gpos
+	);
 
 protected:
 	static void _bind_methods();
@@ -78,22 +96,31 @@ public:
 	static void initialize(Vector2i seg_g_size);
 
 	static Ref<Region> create(
-		String _name,
-		Slot _slot,
-		Vector2i _size,
-		PackedInt32Array _blocked_sides,
-		PackedInt32Array _joining_sides,
-		int _spawn_weight,
-		int _threshold
-	);
+			String _name,
+			Slot _slot,
+			Vector2i _size,
+			PackedInt32Array _blocked_sides,
+			PackedInt32Array _joining_sides,
+			int _spawn_weight,
+			int _threshold);
 
 	static void finalize();
 
 	void generate_zone(
-		Ref<RandomNumberGenerator> rng,
-		Ref<PCG> pcg,
-		const int w_seg,
-		const int max_secondary_count
+			Ref<RandomNumberGenerator> rng,
+			Ref<PCG> pcg,
+			const int w_seg,
+			const int max_secondary_count);
+
+	static int get_weight_sum_bounded(
+		const PackedFloat32Array &p_weights, const int exl_upper_bound
+	);
+
+	static int rand_weighted_bound(
+		const Ref<RandomNumberGenerator> rng,
+		const PackedFloat32Array &p_weights,
+		const int exl_upper_bound,
+		const int weights_sum
 	);
 };
 
