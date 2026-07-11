@@ -375,32 +375,35 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 			const int left{ stack_top < 0 ? 0 : stack_ptr[stack_top] + 1 };
 			const int width{ bar_i - left };
 
-			if (has_wanted) {
-				if (height >= wanted_height && width >= wanted_width) {
-					Vector2i found_origin{};
-					Vector2i found_size{};
-					found_origin[hist_axis] = hist_origin[hist_axis];
-					found_origin[1 - hist_axis] = hist_origin[1 - hist_axis] + left;
-					found_size[hist_axis] = wanted_height;
-					found_size[1 - hist_axis] = wanted_width;
+			// Even in "wanted" mode, keep tracking the best-so-far rectangle
+			// per run so that if nothing ever satisfies wanted_size we can
+			// still fall back to the same output the no-wanted-size path
+			// would have produced.
+			if (has_wanted && height >= wanted_height && width >= wanted_width) {
+				Vector2i found_origin{};
+				Vector2i found_size{};
+				found_origin[hist_axis] = hist_origin[hist_axis];
+				found_origin[1 - hist_axis] = hist_origin[1 - hist_axis] + left;
+				found_size[hist_axis] = wanted_height;
+				found_size[1 - hist_axis] = wanted_width;
 
-					result.push_back(found_origin);
-					result.push_back(found_size);
-					return result;
-				}
-			} else {
-				const int area{ height * width };
-				if (area > best_area) {
-					best_area = area;
-					best_origin[hist_axis] = hist_origin[hist_axis];
-					best_origin[1 - hist_axis] = hist_origin[1 - hist_axis] + left;
-					best_size[hist_axis] = height;
-					best_size[1 - hist_axis] = width;
-				}
+				result.clear();
+				result.push_back(found_origin);
+				result.push_back(found_size);
+				return result;
+			}
+
+			const int area{ height * width };
+			if (area > best_area) {
+				best_area = area;
+				best_origin[hist_axis] = hist_origin[hist_axis];
+				best_origin[1 - hist_axis] = hist_origin[1 - hist_axis] + left;
+				best_size[hist_axis] = height;
+				best_size[1 - hist_axis] = width;
 			}
 		}
 
-		if (!has_wanted && cur_height <= 0) {
+		if (cur_height <= 0) {
 			if (best_area > 0) {
 				result.push_back(best_origin);
 				result.push_back(best_size);
@@ -411,8 +414,10 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 		stack_ptr[++stack_top] = bar_i;
 	}
 
-	// has_wanted and nothing fit -> empty result.
-	// !has_wanted -> result already holds each run's best rectangle.
+	// has_wanted and a fit was found -> already returned above.
+	// has_wanted and nothing fit -> result holds the same per-run best
+	// rectangles as if wanted_size had never been passed.
+	// !has_wanted -> result holds each run's best rectangle, as before.
 	return result;
 }
 

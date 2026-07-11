@@ -9,15 +9,13 @@ class RandomNumberGenerator;
 class PCG;
 class BitGrid2D;
 
-using RegionVector = LocalVector<Ref<Region>>;
-using DirVectors = std::array<LocalVector<Vector2i>, 4>;
-
 class Region : public RefCounted {
 	GDCLASS(Region, RefCounted);
 
 public:
-	enum Slot { PRIMARY,
-		SECONDARY };
+	struct Edge { Vector2i gpos; Vector2i size; };
+
+	enum Slot { PRIMARY, SECONDARY };
 	enum Direction {
 		NONE = -1,
 		UP = 0,
@@ -28,6 +26,9 @@ public:
 	};
 
 private:
+	using RegionVector = LocalVector<Ref<Region>>;
+	using DirEdge = std::array<LocalVector<Edge>, 4>;
+
 	inline static const Vector2i MAX_G_SIZE{ Vector2i(8, 8) };
 	inline static const int MAX_CELL_COUNT{ 64 };
 	inline static const int FLAT_TREE_SIZE{ MAX_CELL_COUNT * Direction::DIRECTION_MAX };
@@ -58,6 +59,11 @@ private:
 
 	int m_cell_count;
 
+	inline static bool is_debug;
+
+	inline static std::array<std::array<uint64_t, 8>, 8> dominance_mask;
+	static void init_dominance_mask();
+
 public:
 	String name;
 	Slot slot;
@@ -84,47 +90,67 @@ private:
 		}
 	}
 
-	static int get_next_set_bit(uint64_t bitmap, const int start_i);
+	static int get_size_or_larger_i(uint64_t bitmap, const Vector2i size);
 
-	void add_free_edge_gpos(
-		Ref<Region> region, Vector2i gpos, DirVectors &dir_to_free_edge_gpos
+	static void add_free_edge_gpos(
+		Ref<Region> region, Vector2i gpos, DirEdge &dir_to_free_edge_gpos
 	);
 
-	void add_region(
-		Ref<Region> region, Ref<PCG> pcg, Vector2i gpos, DirVectors &dir_to_free_edge_gpos
+	static void add_region(
+		Ref<Region> region,
+		Ref<PCG> pcg,
+		Vector2i gpos,
+		DirEdge &dir_to_free_edge_gpos,
+		int w_seg
 	);
 
-	bool try_place_s_region(
+	static bool try_place_s_region(
 		Ref<Region> s_region,
 		std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
 		std::array<Vector2i, FLAT_TREE_SIZE> &dir_size_to_gpos,
 		Ref<PCG> pcg,
-		DirVectors &dir_to_free_edge_gpos,
-		Ref<BitGrid2D> gen_occupancy
+		DirEdge &dir_to_free_edge_gpos,
+		Ref<BitGrid2D> gen_occupancy,
+		int w_seg
 	);
+
+	static void debug_region(Vector2i gpos, Ref<Region> region, int w_seg);
+
+	static int get_size_i(Vector2i size);
 
 protected:
 	static void _bind_methods();
 
 public:
-	static void initialize(Vector2i seg_g_size);
+	String get_name() const;
+	Region::Slot get_slot() const;
+	Vector2i get_g_size() const;
+	PackedInt32Array get_blocked_sides() const;
+	PackedInt32Array get_joining_sides() const;
+	float get_spawn_weight() const;
+	int get_threshold() const;
+	Vector2i get_g_size_inclusive() const;
+
+	static void initialize(Vector2i seg_g_size, bool debug = false);
 
 	static Ref<Region> create(
-			String _name,
-			Slot _slot,
-			Vector2i _size,
-			PackedInt32Array _blocked_sides,
-			PackedInt32Array _joining_sides,
-			int _spawn_weight,
-			int _threshold);
+		String _name,
+		Slot _slot,
+		Vector2i _size,
+		PackedInt32Array _blocked_sides,
+		PackedInt32Array _joining_sides,
+		int _spawn_weight,
+		int _threshold
+	);
 
 	static void finalize();
 
-	void generate_zone(
-			Ref<RandomNumberGenerator> rng,
-			Ref<PCG> pcg,
-			const int w_seg,
-			const int max_secondary_count);
+	static void generate_zone(
+		Ref<RandomNumberGenerator> rng,
+		Ref<PCG> pcg,
+		const int w_seg,
+		const int max_secondary_count
+	);
 
 	static float get_weight_sum_bounded(
 		const PackedFloat32Array &p_weights, const int exl_upper_bound
