@@ -520,12 +520,14 @@ bool Region::try_place_s_region(
 		const int req_dir_offset{ req_dir * MAX_CELL_COUNT };
 		const int size_i_fit{ get_size_or_larger_i(dir_size_occ[req_dir], g_size_inc) };
 
-		if (size_i_fit != -1) {
-			Vector2i gpos{ dir_size_to_gpos[req_dir_offset + size_i_fit] };
-			add_region(s_region, pcg, gpos, dir_to_free_edge_gpos, w_seg);
-			dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
-			return true;
-		}
+		//if (size_i_fit != -1) {
+		//	Vector2i gpos{ dir_size_to_gpos[req_dir_offset + size_i_fit] };
+		//	add_region(s_region, pcg, gpos, dir_to_free_edge_gpos, w_seg);
+		//	dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
+		//	return true;
+		//}
+
+		//// this needs a recheck or overlaps are possible.
 
 		// otherwise search possible areas
 		LocalVector<Edge> &free_edge_gpos{ dir_to_free_edge_gpos[req_dir] };
@@ -544,26 +546,27 @@ bool Region::try_place_s_region(
 				search_origin.y -= 7;
 				search_size.x = g_size_inc.x + prev_g_size.x / 2;
 			} else if (dir == Direction::DOWN) {
-				search_origin.y += 7;
 				search_size.x = g_size_inc.x + prev_g_size.x / 2;
 				search_origin.x -= search_size.x;
 			} else if (dir == Direction::LEFT) {
 				search_origin.x -= 7;
 				search_size.y = g_size_inc.y + prev_g_size.y / 2;
-			} else if (dir == Direction::RIGHT) {
-				search_origin.x += 7;
-				search_size.y = g_size_inc.y + prev_g_size.y / 2;
 				search_origin.y -= search_size.y;
+			} else if (dir == Direction::RIGHT) {
+				search_size.y = g_size_inc.y + prev_g_size.y / 2;
 			}
 
 			PackedVector2Array org_size{
 				gen_occupancy->find_anchored_unset_areas_in_bounds(
 					search_origin,
 					search_size,
-					static_cast<BitGrid2D::Direction>(dir),
+					static_cast<BitGrid2D::Direction>(req_dir),
 					g_size_inc
 				)
 			};
+
+			///////////////// correct to here /////////////////
+			//// input for org_size must be wrong?
 
 			// edge is full
 			if (org_size.size() < 2) {
@@ -571,13 +574,15 @@ bool Region::try_place_s_region(
 				free_edge_gpos[gpos_i] = free_edge_gpos[free_edge_gpos.size() - 1];
 				free_edge_gpos.resize(free_edge_gpos.size() - 1);
 
-				WARN_PRINT(vformat("size is %d", org_size.size()));
+				WARN_PRINT(vformat("edge full %d", org_size.size()));
 				continue;
 			}
 
 			// there is enough room
-			if (org_size[1] >= g_size_inc) {
-				WARN_PRINT(vformat("added %s", org_size[1]));
+			if (org_size.size() == 2 && org_size[1] == g_size_inc) {
+				WARN_PRINT(vformat("placed %s", org_size));
+
+				// is this even segment position, or is it in the search space in some way
 				add_region(s_region, pcg, org_size[0], dir_to_free_edge_gpos, w_seg);
 
 				// edge is being used so remove it
@@ -586,8 +591,6 @@ bool Region::try_place_s_region(
 
 				return true;
 			}
-
-			WARN_PRINT(vformat("skipped both, result: %s", org_size));
 
 			// we did not find enough room
 			for (int i{ 0 }; i < org_size.size(); i += 2) {
@@ -604,8 +607,11 @@ bool Region::try_place_s_region(
 				}
 
 				const int s_i{ get_size_i(found_size) };
+				// should this be req_dir_offset or just dir_offset?
 				dir_size_to_gpos[req_dir_offset + s_i] = found_origin;
 				dir_size_occ[req_dir] |= 1ull << s_i;
+
+				WARN_PRINT(vformat("set bit: %s, origin: %s, size %s", s_i, found_origin, found_size));
 			}
 		}
 	}
