@@ -50,7 +50,7 @@ public:
 		Vector2i origin,
 		Vector2i search_size,
 		Direction anchor_dir,
-		Vector2i wanted_size = Vector2i()
+		Vector2i wanted_size = Vector2i(0, 0)
 	) const;
 
 	int find_cell_in_state(

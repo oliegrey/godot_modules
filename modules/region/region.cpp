@@ -435,7 +435,7 @@ void Region::generate_zone(
 	std::array<Vector2i, FLAT_TREE_SIZE> dir_size_to_gpos;
 	std::array<uint64_t, Direction::DIRECTION_MAX> dir_size_occ{};
 
-	for (int i{ 0 }; i < target_secondary_count; ++i) {
+	for (int i{ 0 }; i < 1; ++i) {//target_secondary_count; ++i) {
 		const int secondary_i{
 			rand_weighted_bound(rng, m_secondary_weights, threshold_i, secondary_weight_sum)
 		};
@@ -459,42 +459,42 @@ void Region::generate_zone(
 		}
 	}
 
-	const int MAX_ATTEMPTS{ 3 };
+	//const int MAX_ATTEMPTS{ 3 };
 
-	RegionVector temp_rejects{};
+	//RegionVector temp_rejects{};
 
-	for (int attempt{ 0 }; attempt < MAX_ATTEMPTS; ++attempt) {
+	//for (int attempt{ 0 }; attempt < MAX_ATTEMPTS; ++attempt) {
 
-		if (attempt > 0) {
-			s_region_rejects = temp_rejects;
-		}
+	//	if (attempt > 0) {
+	//		s_region_rejects = temp_rejects;
+	//	}
 
-		temp_rejects.resize(0);
+	//	temp_rejects.resize(0);
 
-		for (Ref<Region> s_region: s_region_rejects) {
+	//	for (Ref<Region> s_region: s_region_rejects) {
 
-			bool success {
-				try_place_s_region(
-					s_region,
-					dir_size_occ,
-					dir_size_to_gpos,
-					pcg,
-					dir_to_free_edge_gpos,
-					gen_occupancy,
-					w_seg
-				)
-			};
-			WARN_PRINT(vformat("trying to place region resulted in %s", success));
+	//		bool success {
+	//			try_place_s_region(
+	//				s_region,
+	//				dir_size_occ,
+	//				dir_size_to_gpos,
+	//				pcg,
+	//				dir_to_free_edge_gpos,
+	//				gen_occupancy,
+	//				w_seg
+	//			)
+	//		};
+	//		WARN_PRINT(vformat("trying to place region resulted in %s", success));
 
-			if (!success) {
-				temp_rejects.push_back(s_region);
-			}
-		}
+	//		if (!success) {
+	//			temp_rejects.push_back(s_region);
+	//		}
+	//	}
 
-		if (temp_rejects.size() == s_region_rejects.size()) {
-			break; // impossible to get any more to place, no point retrying
-		}
-	}
+	//	if (temp_rejects.size() == s_region_rejects.size()) {
+	//		break; // impossible to get any more to place, no point retrying
+	//	}
+	//}
 }
 
 int Region::get_size_i(Vector2i size) {
@@ -510,6 +510,7 @@ bool Region::try_place_s_region(
 	Ref<BitGrid2D> gen_occupancy,
 	int w_seg
 ) {
+	WARN_PRINT(vformat("attempting to place %s", s_region->name));
 	for (int dir_i : s_region->joining_sides) {
 		Direction dir{ static_cast<Direction>(dir_i) };
 		Direction req_dir{ invert_direction(dir) };
@@ -533,34 +534,40 @@ bool Region::try_place_s_region(
 		LocalVector<Edge> &free_edge_gpos{ dir_to_free_edge_gpos[req_dir] };
 
 		// iterate backwards so we can swap remove items from the end without issues
+		WARN_PRINT(vformat("testing joining side %s", dir_i));
+
 		for (int64_t gpos_i{ static_cast<int64_t>(free_edge_gpos.size()) - 1 }; gpos_i >= 0 ; --gpos_i) {
 			Vector2i gpos{ free_edge_gpos[gpos_i].gpos };
 			Vector2i prev_g_size{ free_edge_gpos[gpos_i].size };
+
+			WARN_PRINT(vformat("trying free edge grid position %s", gpos));
 
 			// set the search origin and size so if g_size is found it will always be
 			// connected to the previous region while using the maximum search size
 			Vector2i search_origin{ gpos };
 			Vector2i search_size{ 8, 8 };
 
-			if (dir == Direction::UP) {
+			if (req_dir == Direction::UP) {
 				search_origin.y -= 7;
 				search_size.x = g_size_inc.x + prev_g_size.x / 2;
-			} else if (dir == Direction::DOWN) {
+			} else if (req_dir == Direction::DOWN) {
 				search_size.x = g_size_inc.x + prev_g_size.x / 2;
-				search_origin.x -= search_size.x;
-			} else if (dir == Direction::LEFT) {
+				search_origin.x -= search_size.x - 1;
+			} else if (req_dir == Direction::LEFT) {
 				search_origin.x -= 7;
 				search_size.y = g_size_inc.y + prev_g_size.y / 2;
-				search_origin.y -= search_size.y;
-			} else if (dir == Direction::RIGHT) {
+				search_origin.y -= search_size.y - 1;
+			} else if (req_dir == Direction::RIGHT) {
 				search_size.y = g_size_inc.y + prev_g_size.y / 2;
 			}
+
+			WARN_PRINT(vformat("search origin %s, search size %s", search_origin, search_size));
 
 			PackedVector2Array org_size{
 				gen_occupancy->find_anchored_unset_areas_in_bounds(
 					search_origin,
 					search_size,
-					static_cast<BitGrid2D::Direction>(req_dir),
+					static_cast<BitGrid2D::Direction>(dir),
 					g_size_inc
 				)
 			};
@@ -580,7 +587,7 @@ bool Region::try_place_s_region(
 
 			// there is enough room
 			if (org_size.size() == 2 && org_size[1] == g_size_inc) {
-				WARN_PRINT(vformat("placed %s", org_size));
+				WARN_PRINT(vformat("placed at %s", org_size));
 
 				// is this even segment position, or is it in the search space in some way
 				add_region(s_region, pcg, org_size[0], dir_to_free_edge_gpos, w_seg);
@@ -631,6 +638,19 @@ void Region::add_region(
 	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, region->g_size_inclusive);
 	// add primaries free edge grid positions
 	add_free_edge_gpos(region, gpos, dir_to_free_edge_gpos);
+
+	WARN_PRINT(vformat("added region %s at %s", region->name, gpos));
+
+	String a{ "" };
+	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
+		a += "[";
+		for (Edge edge : dir_to_free_edge_gpos[dir]) {
+			a += vformat("(gpos%s, size%s), ", edge.gpos, edge.size);
+		}
+		a += "], ";
+	}
+	WARN_PRINT(vformat("added edge positions for w_seg %s:\n%s", w_seg, a));
+	
 	if (is_debug) {
 		debug_region(gpos, region, w_seg);
 	}
