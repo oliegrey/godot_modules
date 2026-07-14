@@ -359,7 +359,7 @@ int Region::rand_weighted_bound(
 void Region::add_free_edge_gpos(
 	Ref<Region> region, Vector2i gpos, DirEdge& dir_to_free_edge_gpos
 ) {
-	Vector2i size{ region->g_size_inclusive };
+	Vector2i size{ region->g_size };
 
 	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
 		if (region->blocked_sides.has(dir)) {
@@ -370,12 +370,34 @@ void Region::add_free_edge_gpos(
 
 		if (dir == Direction::UP) {
 			edge_gpos.y -= 1;
+			if (region->blocked_sides.has(Direction::LEFT)) {
+				edge_gpos.x += 1;
+			}
+
 		} else if (dir == Direction::DOWN) {
 			edge_gpos.y += size.y;
+			if (region->blocked_sides.has(Direction::LEFT)) {
+				edge_gpos.x += 1;
+			}
+
 		} else if (dir == Direction::LEFT) {
 			edge_gpos.x -= 1;
+			if (region->blocked_sides.has(Direction::UP)) {
+				edge_gpos.y += 1;
+			}
+
 		} else if (dir == Direction::RIGHT) {
 			edge_gpos.x += size.x;
+			if (region->blocked_sides.has(Direction::UP)) {
+				edge_gpos.y += 1;
+			}
+		}
+
+		if (
+			edge_gpos.x < 0 || edge_gpos.y < 0 ||
+			edge_gpos.x >= m_seg_g_size.x || edge_gpos.y >= m_seg_g_size.y
+		) {
+			continue;
 		}
 
 		dir_to_free_edge_gpos[dir].push_back(Edge{ edge_gpos, size });
@@ -520,6 +542,8 @@ bool Region::try_place_s_region(
 
 		const Vector2i g_size_inc{ s_region->g_size_inclusive };
 
+		const Vector2i g_size{ s_region->g_size };
+
 		// look for it in the tree of already searched and catalogued areas
 		const int req_dir_offset{ req_dir * MAX_CELL_COUNT };
 		const int size_i_fit{ get_size_or_larger_i(dir_size_occ[req_dir], g_size_inc) };
@@ -552,16 +576,16 @@ bool Region::try_place_s_region(
 
 			if (req_dir == Direction::UP) {
 				search_origin.y -= 7;
-				search_size.x = g_size_inc.x + prev_g_size.x / 2;
+				search_size.x = prev_g_size.x;
 			} else if (req_dir == Direction::DOWN) {
-				search_size.x = g_size_inc.x + prev_g_size.x / 2;
-				search_origin.x -= search_size.x - 1;
+				search_size.x = prev_g_size.x;
+				search_origin.x -= g_size.x - 1; // dont use inclusive or you can get blocked areas more easily
 			} else if (req_dir == Direction::LEFT) {
 				search_origin.x -= 7;
-				search_size.y = g_size_inc.y + prev_g_size.y / 2;
-				search_origin.y -= search_size.y - 1;
+				search_size.y = prev_g_size.y;
+				search_origin.y -= g_size.y - 1;
 			} else if (req_dir == Direction::RIGHT) {
-				search_size.y = g_size_inc.y + prev_g_size.y / 2;
+				search_size.y = prev_g_size.y;
 			}
 
 			WARN_PRINT(vformat("search origin %s, search size %s", search_origin, search_size));
