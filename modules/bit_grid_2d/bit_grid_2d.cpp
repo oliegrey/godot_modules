@@ -273,16 +273,15 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 	Vector2i origin, Vector2i search_size, const Direction anchor_dir, Vector2i wanted_size
 ) const {
 	ERR_FAIL_COND_V_MSG(
-		search_size.x <= 0 || search_size.y <= 0,
-		PackedVector2Array(), "provided size is zero area"
+		search_size.x <= 0 || search_size.y <= 0, PackedVector2Array(), "search size is zero area"
 	);
-	ERR_FAIL_COND_V_MSG(
-		origin.x < 0 || origin.y < 0 || origin.x >= grid_size.x || origin.y >= grid_size.y,
-		PackedVector2Array(), "origin out of grid bounds"
-	);
+
+	origin.x = CLAMP(origin.x, 0, grid_size.x - 1);
+	origin.y = CLAMP(origin.y, 0, grid_size.y - 1);
 
 	search_size.x = MIN(search_size.x, grid_size.x - origin.x);
 	search_size.y = MIN(search_size.y, grid_size.y - origin.y);
+
 	if (search_size.x < wanted_size.x || search_size.y < wanted_size.y) {
 		WARN_PRINT("search size is smaller than wanted size, returning...");
 		return PackedVector2Array();

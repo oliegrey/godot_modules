@@ -393,7 +393,8 @@ void Region::generate_zone(
 	Ref<BitGrid2D> gen_occupancy{ pcg->generative_occupancy };
 
 	// how many secondaries we want
-	int target_secondary_count{ rng->randi_range(max_secondary_count / 4, max_secondary_count) };
+	int target_secondary_count{ max_secondary_count }; //rng->randi_range(max_secondary_count / 4, max_secondary_count)
+
 
 	// free grid position look up based on direction requirement; dir -> [free edge gpos, g_size, ...]
 	DirEdge dir_to_free_edge_gpos{};
@@ -435,7 +436,7 @@ void Region::generate_zone(
 	std::array<Vector2i, FLAT_TREE_SIZE> dir_size_to_gpos;
 	std::array<uint64_t, Direction::DIRECTION_MAX> dir_size_occ{};
 
-	for (int i{ 0 }; i < 1; ++i) {//target_secondary_count; ++i) {
+	for (int i{ 0 }; i < target_secondary_count; ++i) {
 		const int secondary_i{
 			rand_weighted_bound(rng, m_secondary_weights, threshold_i, secondary_weight_sum)
 		};
@@ -458,6 +459,8 @@ void Region::generate_zone(
 			s_region_rejects.push_back(s_region);
 		}
 	}
+
+	WARN_PRINT(vformat("s_region_rejects size is %d", s_region_rejects.size()));
 
 	//const int MAX_ATTEMPTS{ 3 };
 
@@ -484,7 +487,7 @@ void Region::generate_zone(
 	//				w_seg
 	//			)
 	//		};
-	//		WARN_PRINT(vformat("trying to place region resulted in %s", success));
+	//		WARN_PRINT(vformat("retry attempt %d to place region resulted in %s", attempt, success));
 
 	//		if (!success) {
 	//			temp_rejects.push_back(s_region);
@@ -534,7 +537,7 @@ bool Region::try_place_s_region(
 		LocalVector<Edge> &free_edge_gpos{ dir_to_free_edge_gpos[req_dir] };
 
 		// iterate backwards so we can swap remove items from the end without issues
-		WARN_PRINT(vformat("testing joining side %s", dir_i));
+		WARN_PRINT(vformat("testing joining side %s (req dir %s)", dir_i, req_dir));
 
 		for (int64_t gpos_i{ static_cast<int64_t>(free_edge_gpos.size()) - 1 }; gpos_i >= 0 ; --gpos_i) {
 			Vector2i gpos{ free_edge_gpos[gpos_i].gpos };
@@ -572,9 +575,6 @@ bool Region::try_place_s_region(
 				)
 			};
 
-			///////////////// correct to here /////////////////
-			//// input for org_size must be wrong?
-
 			// edge is full
 			if (org_size.size() < 2) {
 				// edge cant be used so remove it
@@ -589,8 +589,15 @@ bool Region::try_place_s_region(
 			if (org_size.size() == 2 && org_size[1] == g_size_inc) {
 				WARN_PRINT(vformat("placed at %s", org_size));
 
+				Vector2i dir_offset_gpos{ org_size[0] };
+				if (req_dir == Direction::UP) {
+					dir_offset_gpos.y -= g_size_inc.y - 1;
+				} else if (req_dir == Direction::RIGHT) {
+					dir_offset_gpos.x -= g_size_inc.x - 1;
+				}
+
 				// is this even segment position, or is it in the search space in some way
-				add_region(s_region, pcg, org_size[0], dir_to_free_edge_gpos, w_seg);
+				add_region(s_region, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
 
 				// edge is being used so remove it
 				free_edge_gpos[gpos_i] = free_edge_gpos[free_edge_gpos.size() - 1];
