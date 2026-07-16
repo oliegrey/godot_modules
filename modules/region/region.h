@@ -62,7 +62,6 @@ private:
 	inline static bool is_debug;
 
 	inline static std::array<std::array<uint64_t, 8>, 8> dominance_mask;
-	static void init_dominance_mask();
 
 public:
 	String name;
@@ -90,6 +89,8 @@ private:
 		}
 	}
 
+	static void init_dominance_mask();
+
 	static int get_size_or_larger_i(uint64_t bitmap, const Vector2i size);
 
 	static void add_free_edge_gpos(
@@ -105,9 +106,10 @@ private:
 	);
 
 	static bool try_place_s_region(
+		Ref<RandomNumberGenerator> rng,
 		Ref<Region> s_region,
 		std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
-		std::array<Vector2i, FLAT_TREE_SIZE> &dir_size_to_gpos,
+		std::array<PackedVector2Array, FLAT_TREE_SIZE> &dir_size_to_gpos,
 		Ref<PCG> pcg,
 		DirEdge &dir_to_free_edge_gpos,
 		Ref<BitGrid2D> gen_occupancy,

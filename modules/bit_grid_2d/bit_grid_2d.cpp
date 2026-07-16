@@ -272,19 +272,30 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 	Vector2i origin, Vector2i search_size, const Direction anchor_dir, Vector2i wanted_size
 ) const {
-	ERR_FAIL_COND_V_MSG(
-		search_size.x <= 0 || search_size.y <= 0, PackedVector2Array(), "search size is zero area"
-	);
-
-	origin.x = CLAMP(origin.x, 0, grid_size.x - 1);
-	origin.y = CLAMP(origin.y, 0, grid_size.y - 1);
-
-	search_size.x = MIN(search_size.x, grid_size.x - origin.x);
-	search_size.y = MIN(search_size.y, grid_size.y - origin.y);
+	if (search_size.x <= 0 || search_size.y <= 0) {
+		return PackedVector2Array();
+	}
+	
+	if (origin.x < 0) {
+		search_size.x += origin.x;
+		origin.x = 0;
+	}
+	if (origin.y < 0) {
+		search_size.y += origin.y;
+		origin.y = 0;
+	}
+	if (origin.x + search_size.x >= grid_size.x) {
+		int delta{ origin.x + search_size.x - grid_size.x };
+		search_size.x -= delta;
+	}
+	if (origin.y + search_size.y >= grid_size.y) {
+		int delta{ origin.y + search_size.y - grid_size.y };
+		search_size.y -= delta;
+	}
 
 	if (search_size.x < wanted_size.x || search_size.y < wanted_size.y) {
-		WARN_PRINT("search size is smaller than wanted size, returning...");
-		return PackedVector2Array();
+		WARN_PRINT("search size is smaller than wanted size, ignoring wanted size");
+		wanted_size = Vector2i(0, 0);
 	}
 
 	WARN_PRINT(vformat("the wanted size was %s. the search size adjusted was %s", wanted_size, search_size));
