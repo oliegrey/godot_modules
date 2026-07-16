@@ -579,6 +579,12 @@ bool Region::try_place_s_region(
 			Vector2i gpos{ (*sized_gpos)[idx] };
 			Vector2i found_size{ (size_i_fit % MAX_G_SIZE.x) + 1, (size_i_fit / MAX_G_SIZE.x) + 1 };
 
+			if (dir == Direction::DOWN) {
+				gpos.y -= found_size.y - 1;
+			} else if (dir == Direction::RIGHT) {
+				gpos.x -= found_size.x - 1;
+			}
+
 			PackedVector2Array org_size{
 				gen_occupancy->find_anchored_unset_areas_in_bounds(
 					gpos,
@@ -606,7 +612,7 @@ bool Region::try_place_s_region(
 				Vector2i dir_offset_gpos{ org_size[0] };
 				if (req_dir == Direction::UP) {
 					dir_offset_gpos.y -= g_size_inc.y - 1;
-				} else if (req_dir == Direction::RIGHT) {
+				} else if (req_dir == Direction::LEFT) {
 					dir_offset_gpos.x -= g_size_inc.x - 1;
 				}
 
@@ -666,66 +672,66 @@ bool Region::try_place_s_region(
 
 			// different rules for 1 length if there are stone sides because it will never fit
 			if (req_dir == Direction::UP) {
-				const bool is_extended{ s_region->blocked_sides.has(Direction::LEFT) };
 				search_origin.y -= 7;
 
-				if (prev_g_size.x == 1 && is_extended) {
+				if (prev_g_size.x == 1 && s_region->blocked_sides.has(Direction::LEFT)) {
 					search_size.x = 1;
 					wanted_size = Vector2i(0, 0);
 				}
 
 				else {
-					search_size.x = prev_g_size.x;
-					if (is_extended) { search_size.x -= 1; }
+					search_size.x = prev_g_size.x + g_size.x;
+					if (!s_region->blocked_sides.has(Direction::RIGHT)) {
+						search_size.x -= 1;
+					}
 				}
 				
 			} else if (req_dir == Direction::DOWN) {
-				const bool is_extended{ s_region->blocked_sides.has(Direction::RIGHT) };
-
-				if (prev_g_size.x == 1 && is_extended) {
+				if (prev_g_size.x == 1 && s_region->blocked_sides.has(Direction::RIGHT)) {
 					search_size.x = 1;
 					wanted_size = Vector2i(0, 0);
 				}
 
 				else {
-					search_size.x = prev_g_size.x;
-					search_origin.x -= g_size.x;
+					search_origin.x -= g_size.x; 
+					search_size.x = prev_g_size.x + g_size.x;
+					
 					if (!s_region->blocked_sides.has(Direction::LEFT)) {
 						search_origin.x += 1;
+						search_size.x -= 1;
 					}
-					if (is_extended) { search_size.x -= 1; }
 				}
 
-			} else if (req_dir == Direction::LEFT) {
-				const bool is_extended{ s_region->blocked_sides.has(Direction::UP) };
+			} else if (req_dir == Direction::LEFT) {;
 				search_origin.x -= 7;
 
-				if (prev_g_size.y == 1 && is_extended) {
+				if (prev_g_size.y == 1 && s_region->blocked_sides.has(Direction::UP)) {
 					search_size.y = 1;
 					wanted_size = Vector2i(0, 0);
 				}
 
 				else {
-					search_size.y = prev_g_size.y;
 					search_origin.y -= g_size.y;
-					if (!s_region->blocked_sides.has(Direction::DOWN)) {
+					search_size.y = prev_g_size.y + g_size.y;
+					
+					if (!s_region->blocked_sides.has(Direction::UP)) {
 						search_origin.y += 1;
+						search_size.y -= 1;
 					}
-					if (is_extended) { search_size.y -= 1; }
 				}
 
 
 			} else if (req_dir == Direction::RIGHT) {
-				search_size.y = prev_g_size.y;
-				const bool is_extended{ s_region->blocked_sides.has(Direction::UP) };
-
-				if (prev_g_size.y == 1 && is_extended) {
+				if (prev_g_size.y == 1 && s_region->blocked_sides.has(Direction::UP)) {
 					search_size.y = 1;
 					wanted_size = Vector2i(0, 0);
 				}
 
-				else if (is_extended) {
-					search_size.y -= 1;
+				else {
+					search_size.y = prev_g_size.x + g_size.x;
+					if (!s_region->blocked_sides.has(Direction::DOWN)) {
+						search_size.y -= 1;
+					}
 				}
 			}
 
@@ -753,9 +759,9 @@ bool Region::try_place_s_region(
 			// there is enough room
 			if (org_size.size() == 2 && org_size[1] == g_size_inc) {
 				Vector2i dir_offset_gpos{ org_size[0] };
-				if (req_dir == Direction::UP) {
+				if (dir == Direction::DOWN) {
 					dir_offset_gpos.y -= g_size_inc.y - 1;
-				} else if (req_dir == Direction::RIGHT) {
+				} else if (dir == Direction::RIGHT) {
 					dir_offset_gpos.x -= g_size_inc.x - 1;
 				}
 
@@ -797,8 +803,7 @@ void Region::add_region(
 ) {
 	const PackedInt32Array LAYER_OFFSETS{ 0 };
 	const PackedInt32Array TILE_INDEXES{ 0 };
-	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, region->g_size_inclusive);
-	// add primaries free edge grid positions
+	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, region->g_size_inclusive, true);
 	add_free_edge_gpos(region, gpos, dir_to_free_edge_gpos);
 
 	WARN_PRINT(vformat("added region %s at %s", region->name, gpos));
