@@ -294,11 +294,11 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 	}
 
 	if (search_size.x < wanted_size.x || search_size.y < wanted_size.y) {
-		WARN_PRINT("search size is smaller than wanted size, ignoring wanted size");
+		//WARN_PRINT("search size is smaller than wanted size, ignoring wanted size");
 		wanted_size = Vector2i(0, 0);
 	}
 
-	WARN_PRINT(vformat("the wanted size was %s. the search size adjusted was %s", wanted_size, search_size));
+	//WARN_PRINT(vformat("the wanted size was %s. the search size adjusted was %s", wanted_size, search_size));
 
 	const bool has_wanted{ wanted_size.x > 0 && wanted_size.y > 0 };
 	ERR_FAIL_COND_V_MSG(

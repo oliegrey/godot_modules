@@ -136,6 +136,15 @@ void Region::_bind_methods() {
 
 	BIND_ENUM_CONSTANT(PRIMARY);
 	BIND_ENUM_CONSTANT(SECONDARY);
+
+	BIND_ENUM_CONSTANT(FILL);
+	BIND_ENUM_CONSTANT(RANDOM);
+
+	BIND_ENUM_CONSTANT(DIRT);
+	BIND_ENUM_CONSTANT(STONE);
+	BIND_ENUM_CONSTANT(RANDOM);
+	BIND_ENUM_CONSTANT(ANY);
+	BIND_ENUM_CONSTANT(ANY_STONE);
 }
 
 String Region::get_name() const {
@@ -238,8 +247,6 @@ Ref<Region> Region::create(
 	return region;
 }
 
-
-// causing a seg fault somewhere
 void Region::finalize() {
 	std::sort(
 		m_primary_regions.ptr(),
@@ -483,45 +490,45 @@ void Region::generate_zone(
 		}
 	}
 
-	WARN_PRINT(vformat("s_region_rejects size is %d", s_region_rejects.size()));
+	//WARN_PRINT(vformat("s_region_rejects size is %d", s_region_rejects.size()));
 
-	//const int MAX_ATTEMPTS{ 3 };
+	const int MAX_ATTEMPTS{ 4 };
 
-	//RegionVector temp_rejects{};
+	RegionVector temp_rejects{};
 
-	//for (int attempt{ 0 }; attempt < MAX_ATTEMPTS; ++attempt) {
+	for (int attempt{ 0 }; attempt < MAX_ATTEMPTS; ++attempt) {
 
-	//	if (attempt > 0) {
-	//		s_region_rejects = temp_rejects;
-	//	}
+		if (attempt > 0) {
+			s_region_rejects = temp_rejects;
+		}
 
-	//	temp_rejects.resize(0);
+		temp_rejects.resize(0);
 
-	//	for (Ref<Region> s_region: s_region_rejects) {
+		for (Ref<Region> s_region: s_region_rejects) {
 
-	//		bool success {
-	//			try_place_s_region(
-	//				rng,
-	//				s_region,
-	//				dir_size_occ,
-	//				dir_size_to_gpos,
-	//				pcg,
-	//				dir_to_free_edge_gpos,
-	//				gen_occupancy,
-	//				w_seg
-	//			)
-	//		};
-	//		WARN_PRINT(vformat("retry attempt %d to place region resulted in %s", attempt, success));
+			bool success {
+				try_place_s_region(
+					rng,
+					s_region,
+					dir_size_occ,
+					dir_size_to_gpos,
+					pcg,
+					dir_to_free_edge_gpos,
+					gen_occupancy,
+					w_seg
+				)
+			};
+			//WARN_PRINT(vformat("retry attempt %d to place region resulted in %s", attempt, success));
 
-	//		if (!success) {
-	//			temp_rejects.push_back(s_region);
-	//		}
-	//	}
+			if (!success) {
+				temp_rejects.push_back(s_region);
+			}
+		}
 
-	//	if (temp_rejects.size() == s_region_rejects.size()) {
-	//		break; // impossible to get any more to place, no point retrying
-	//	}
-	//}
+		if (temp_rejects.size() == s_region_rejects.size()) {
+			break; // impossible to get any more to place, no point retrying
+		}
+	}
 }
 
 int Region::get_size_i(Vector2i size) {
@@ -538,7 +545,7 @@ bool Region::try_place_s_region(
 	Ref<BitGrid2D> gen_occupancy,
 	int w_seg
 ) {
-	WARN_PRINT(vformat("attempting to place %s", s_region->name));
+	//warn_print(vformat("attempting to place %s", s_region->name));
 
 	const int64_t side_count{ s_region->joining_sides.size() };
 	int start_dir_i{ rng->randi_range(0, side_count - 1) };
@@ -575,7 +582,7 @@ bool Region::try_place_s_region(
 
 			--idx;
 
-			WARN_PRINT(vformat("found size fit in already scanned for %s", s_region->name));
+			//warn_print(vformat("found size fit in already scanned for %s", s_region->name));
 			Vector2i gpos{ (*sized_gpos)[idx] };
 			Vector2i found_size{ (size_i_fit % MAX_G_SIZE.x) + 1, (size_i_fit / MAX_G_SIZE.x) + 1 };
 
@@ -603,7 +610,7 @@ bool Region::try_place_s_region(
 					dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
 				}
 
-				WARN_PRINT(vformat("edge full on already searched %d", org_size.size()));
+				//warn_print(vformat("edge full on already searched %d", org_size.size()));
 				continue;
 			}
 
@@ -627,7 +634,7 @@ bool Region::try_place_s_region(
 				}
 
 				// edge is being used so remove it
-				WARN_PRINT(vformat("placed from already searched at %s", org_size));
+				//warn_print(vformat("placed from already searched at %s", org_size));
 				return true;
 			}
 
@@ -649,20 +656,20 @@ bool Region::try_place_s_region(
 				dir_size_to_gpos[req_dir_offset + s_i].push_back(found_origin);
 				dir_size_occ[req_dir] |= 1ull << s_i;
 
-				WARN_PRINT(vformat("set bit from already searched: %s, origin: %s, size %s", s_i, found_origin, found_size));
+				//warn_print(vformat("set bit from already searched: %s, origin: %s, size %s", s_i, found_origin, found_size));
 			}
 		}
 
 
 		// otherwise search possible areas
 		// iterate backwards so we can swap remove items from the end without issues
-		WARN_PRINT(vformat("testing joining side %s (req dir %s)", dir_i, req_dir));
+		//warn_print(vformat("testing joining side %s (req dir %s)", dir_i, req_dir));
 
 		for (int64_t gpos_i{ static_cast<int64_t>(free_edge_gpos.size()) - 1 }; gpos_i >= 0 ; --gpos_i) {
 			Vector2i gpos{ free_edge_gpos[gpos_i].gpos };
 			Vector2i prev_g_size{ free_edge_gpos[gpos_i].size };
 
-			WARN_PRINT(vformat("trying free edge grid position %s", gpos));
+			//warn_print(vformat("trying free edge grid position %s", gpos));
 
 			// set the search origin and size so if g_size is found it will always be
 			// connected to the previous region while using the maximum search size
@@ -735,7 +742,7 @@ bool Region::try_place_s_region(
 				}
 			}
 
-			WARN_PRINT(vformat("search origin %s, search size %s", search_origin, search_size));
+			//warn_print(vformat("search origin %s, search size %s", search_origin, search_size));
 
 			PackedVector2Array org_size{
 				gen_occupancy->find_anchored_unset_areas_in_bounds(
@@ -752,7 +759,7 @@ bool Region::try_place_s_region(
 				free_edge_gpos[gpos_i] = free_edge_gpos[free_edge_gpos.size() - 1];
 				free_edge_gpos.resize(free_edge_gpos.size() - 1);
 
-				WARN_PRINT(vformat("edge full %d", org_size.size()));
+				//warn_print(vformat("edge full %d", org_size.size()));
 				continue;
 			}
 
@@ -772,7 +779,7 @@ bool Region::try_place_s_region(
 				add_region(s_region, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
 
 				// edge is being used so remove it
-				WARN_PRINT(vformat("placed at %s", org_size));
+				//warn_print(vformat("placed at %s", org_size));
 
 				return true;
 			}
@@ -786,7 +793,7 @@ bool Region::try_place_s_region(
 				dir_size_to_gpos[req_dir_offset + s_i].push_back(found_origin);
 				dir_size_occ[req_dir] |= 1ull << s_i;
 
-				WARN_PRINT(vformat("set bit: %s, origin: %s, size %s", s_i, found_origin, found_size));
+				//warn_print(vformat("set bit: %s, origin: %s, size %s", s_i, found_origin, found_size));
 			}
 		}
 	}
@@ -805,20 +812,18 @@ void Region::add_region(
 	const PackedInt32Array TILE_INDEXES{ 0 };
 	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, region->g_size_inclusive, true);
 	add_free_edge_gpos(region, gpos, dir_to_free_edge_gpos);
-
-	WARN_PRINT(vformat("added region %s at %s", region->name, gpos));
-
-	String a{ "" };
-	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
-		a += "[";
-		for (Edge edge : dir_to_free_edge_gpos[dir]) {
-			a += vformat("(gpos%s, size%s), ", edge.gpos, edge.size);
-		}
-		a += "], ";
-	}
-	WARN_PRINT(vformat("added edge positions for w_seg %s:\n%s", w_seg, a));
 	
 	if (is_debug) {
+		WARN_PRINT(vformat("added region %s at %s", region->name, gpos));
+		String a{ "" };
+		for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
+			a += "[";
+			for (Edge edge : dir_to_free_edge_gpos[dir]) {
+				a += vformat("(gpos%s, size%s), ", edge.gpos, edge.size);
+			}
+			a += "], ";
+		}
+		WARN_PRINT(vformat("added edge positions for w_seg %s:\n%s", w_seg, a));
 		debug_region(gpos, region, w_seg);
 	}
 }

@@ -25,6 +25,9 @@ public:
 		DIRECTION_MAX = 4
 	};
 
+	enum Placement { FILL = -1, RANDOM = -2 };
+	enum BlockedFill { DIRT, STONE, RANDOM, ANY, ANY_STONE };
+
 private:
 	using RegionVector = LocalVector<Ref<Region>>;
 	using DirEdge = std::array<LocalVector<Edge>, 4>;
@@ -73,19 +76,16 @@ public:
 	int threshold;
 	Vector2i g_size_inclusive; // includes stone sides
 
+
+
 private:
 	static Direction invert_direction(Direction direction) {
 		switch (direction) {
-			case Direction::UP:
-				return Direction::DOWN;
-			case Direction::DOWN:
-				return Direction::UP;
-			case Direction::LEFT:
-				return Direction::RIGHT;
-			case Direction::RIGHT:
-				return Direction::LEFT;
-			default:
-				return Direction::NONE;
+			case Direction::UP:       return Direction::DOWN;
+			case Direction::DOWN:     return Direction::UP;
+			case Direction::LEFT:     return Direction::RIGHT;
+			case Direction::RIGHT:    return Direction::LEFT;
+			default:                  return Direction::NONE;
 		}
 	}
 
@@ -168,3 +168,5 @@ public:
 
 VARIANT_ENUM_CAST(Region::Slot)
 VARIANT_ENUM_CAST(Region::Direction)
+VARIANT_ENUM_CAST(Region::Placement)
+VARIANT_ENUM_CAST(Region::BlockedFill)
