@@ -26,7 +26,7 @@ public:
 	};
 
 	enum Placement { FILL = -1, RANDOM = -2 };
-	enum BlockedFill { DIRT, STONE, RANDOM, ANY, ANY_STONE };
+	enum BlockedFill { DIRT, STONE, MIX, ANY, ANY_STONE };
 
 private:
 	using RegionVector = LocalVector<Ref<Region>>;
@@ -70,13 +70,22 @@ public:
 	String name;
 	Slot slot;
 	Vector2i g_size;
+
 	PackedInt32Array blocked_sides;
+	PackedInt32Array blocked_fill;
+
 	PackedInt32Array joining_sides;
 	float spawn_weight;
 	int threshold;
 	Vector2i g_size_inclusive; // includes stone sides
 
+	LocalVector<LocalVector<Callable>> internal_callables;
+	LocalVector<PackedInt32Array> internal_tile_indexes;
+	LocalVector<PackedInt32Array> internal_layer_offsets;
 
+	LocalVector<LocalVector<Vector2i>> internal_sizes;
+	LocalVector<PackedInt32Array> internal_weights;
+	PackedInt32Array internal_anchor_dir;
 
 private:
 	static Direction invert_direction(Direction direction) {
@@ -132,15 +141,29 @@ public:
 	float get_spawn_weight() const;
 	int get_threshold() const;
 	Vector2i get_g_size_inclusive() const;
+	PackedInt32Array get_blocked_fill() const;
+	Array get_internal_tile_indexes() const;
+	Array get_internal_layer_offsets() const;
+	Array get_internal_weights() const;
+	PackedInt32Array get_internal_anchor_dir() const;
 
 	static void initialize(Vector2i seg_g_size, bool debug = false);
 
 	static Ref<Region> create(
 		String _name,
 		Slot _slot,
-		Vector2i _size,
+		Vector2i _g_size,
+
 		PackedInt32Array _blocked_sides,
+		PackedInt32Array _blocked_fill,
+
 		PackedInt32Array _joining_sides,
+
+		TypedArray<Array> internal_callable_or_tile_choices,
+		TypedArray<PackedVector2Array> internal_sizes,
+		TypedArray<PackedInt32Array> internal_weights,
+		PackedInt32Array internal_anchor_dir,
+
 		int _spawn_weight,
 		int _threshold
 	);

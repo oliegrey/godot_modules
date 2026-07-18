@@ -38,13 +38,18 @@ void Region::_bind_methods() {
 		"Region",
 		D_METHOD(
 			"create",
-			"_name",
-			"_slot",
-			"_size",
-			"_blocked_sides",
-			"_joining_sides",
-			"_spawn_weight",
-			"_threshold"
+			"name",
+			"slot",
+			"g_size",
+			"blocked_sides",
+			"blocked_fill",
+			"joining_sides",
+			"internal_tile_indexes",
+			"internal_layer_offsets",
+			"internal_weights",
+			"internal_anchor_dir",
+			"spawn_weight",
+			"threshold"
 		),
 		&Region::create
 	);
@@ -126,6 +131,30 @@ void Region::_bind_methods() {
 		PropertyInfo(Variant::VECTOR2I, "g_size_inclusive"),
 		"", "get_g_size_inclusive"
 	);
+	ADD_PROPERTY(
+		PropertyInfo(Variant::PACKED_INT32_ARRAY, "blocked_fill"),
+		"", "get_blocked_fill"
+	);
+
+	ADD_PROPERTY(
+		PropertyInfo(Variant::ARRAY, "internal_tile_indexes"),
+		"", "get_internal_tile_indexes"
+	);
+
+	ADD_PROPERTY(
+		PropertyInfo(Variant::ARRAY, "internal_layer_offsets"),
+		"", "get_internal_layer_offsets"
+	);
+
+	ADD_PROPERTY(
+		PropertyInfo(Variant::ARRAY, "internal_weights"),
+		"", "get_internal_weights"
+	);
+
+	ADD_PROPERTY(
+		PropertyInfo(Variant::PACKED_INT32_ARRAY, "internal_anchor_dir"),
+		"", "get_internal_anchor_dir"
+	);
 	
 	BIND_ENUM_CONSTANT(NONE);
 	BIND_ENUM_CONSTANT(UP);
@@ -142,7 +171,7 @@ void Region::_bind_methods() {
 
 	BIND_ENUM_CONSTANT(DIRT);
 	BIND_ENUM_CONSTANT(STONE);
-	BIND_ENUM_CONSTANT(RANDOM);
+	BIND_ENUM_CONSTANT(MIX);
 	BIND_ENUM_CONSTANT(ANY);
 	BIND_ENUM_CONSTANT(ANY_STONE);
 }
@@ -179,6 +208,44 @@ Vector2i Region::get_g_size_inclusive() const {
 	return g_size_inclusive;
 }
 
+PackedInt32Array Region::get_blocked_fill() const {
+	return blocked_fill;
+}
+
+// WARNING: creates a new array, only use for debug or rarely
+Array Region::get_internal_tile_indexes() const {
+	Array arr;
+	arr.resize(internal_tile_indexes.size());
+	for (uint32_t i = 0; i < internal_tile_indexes.size(); i++) {
+		arr[i] = internal_tile_indexes[i];
+	}
+	return arr;
+}
+
+// WARNING: creates a new array, only use for debug or rarely
+Array Region::get_internal_layer_offsets() const {
+	Array arr;
+	arr.resize(internal_layer_offsets.size());
+	for (uint32_t i = 0; i < internal_layer_offsets.size(); i++) {
+		arr[i] = internal_layer_offsets[i];
+	}
+	return arr;
+}
+
+// WARNING: creates a new array, only use for debug or rarely
+Array Region::get_internal_weights() const {
+	Array arr;
+	arr.resize(internal_weights.size());
+	for (uint32_t i = 0; i < internal_weights.size(); i++) {
+		arr[i] = internal_weights[i];
+	}
+	return arr;
+}
+
+PackedInt32Array Region::get_internal_anchor_dir() const {
+	return internal_anchor_dir;
+}
+
 void Region::initialize(Vector2i seg_g_size, bool debug) {
 	for (int dir{ 0 }; dir < m_region_tree.size(); ++dir) {
 		m_region_tree[dir].resize(MAX_CELL_COUNT);
@@ -193,8 +260,17 @@ Ref<Region> Region::create(
 	String _name,
 	Slot _slot,
 	Vector2i _g_size,
+
 	PackedInt32Array _blocked_sides,
+	PackedInt32Array _blocked_fill,
+
 	PackedInt32Array _joining_sides,
+
+	TypedArray<Array> internal_callable_or_tile_choices, // [[callable, tile object, callable], [tile object]]
+	TypedArray<PackedVector2Array> internal_sizes,
+	TypedArray<PackedInt32Array> internal_weights,
+	PackedInt32Array internal_anchor_dir,
+
 	int _spawn_weight,
 	int _threshold
 ) {
@@ -208,9 +284,54 @@ Ref<Region> Region::create(
 	region->slot          = _slot;
 	region->g_size        = _g_size;
 	region->blocked_sides = _blocked_sides;
+	region->blocked_fill  = _blocked_fill;
 	region->joining_sides = _joining_sides;
-	region->spawn_weight  = _spawn_weight;
-	region->threshold     = _threshold;
+	
+	int64_t choices_size{ internal_callable_or_tile_choices.size() };
+
+	region->internal_callables.resize(choices_size);
+	region->internal_tile_indexes.resize(choices_size);
+	region->internal_layer_offsets.resize(choices_size);
+
+	for (int i{ 0 }; i < internal_callable_or_tile_choices.size(); ++i) {
+		Array arr{ internal_callable_or_tile_choices[i] };
+
+		for (Variant variant : arr) {
+			Variant::Type type{ variant.get_type() };
+
+			if (type == Variant::CALLABLE) {
+				region->internal_callables[i].push_back(variant);
+
+			} else if (type == Variant::OBJECT) {
+				region->internal_tile_indexes[i].push_back(variant.get("tile_i"));
+				int layer_i{ variant.get("layer_i") };
+				region->internal_layer_offsets[i].push_back(layer_i * m_seg_cell_count);
+				
+			} else {
+				ERR_FAIL_V_MSG(
+					Ref<Region>(),
+					"incompatible type passed to Region::create for internal_callable_or_tile_choices"
+				);
+			}
+		}
+	}
+
+	region->internal_sizes.resize(internal_sizes.size());
+	for (int i{ 0 }; i < internal_sizes.size(); ++i) {
+		PackedVector2Array grid_positions{ internal_sizes[i] };
+		for (Vector2 gpos : grid_positions) {
+			region->internal_sizes[i].push_back(gpos);
+		}
+	}
+
+	region->internal_weights.resize(internal_weights.size());
+	for (int i{ 0 }; i < internal_weights.size(); ++i) {
+		region->internal_weights[i] = internal_weights[i];
+	}
+	region->internal_anchor_dir = internal_anchor_dir;
+
+	region->spawn_weight = _spawn_weight;
+	region->threshold    = _threshold;
 
 	region->g_size_inclusive = _g_size;
 	for (int dir : region->blocked_sides) {
@@ -232,17 +353,6 @@ Ref<Region> Region::create(
 	} else {
 		m_secondary_regions.push_back(region);
 	}
-
-	//for (int i{ 0 }; i < _joining_sides.size(); ++i) {
-	//	Direction direction{ static_cast<Direction>(_joining_sides[i]) };
-	//	Direction inv_direction{ invert_direction(direction) };
-	//	m_dir_to_region[inv_direction].push_back(region);
-
-	//	const int tree_i{ inv_direction * MAX_CELL_COUNT + (region->m_cell_count - 1) };
-	//	CRASH_BAD_INDEX(tree_i, FLAT_TREE_SIZE);
-	//	m_region_tree[tree_i].push_back(region);
-	//	m_region_tree_occ[inv_direction] |= 1ull << (region->m_cell_count - 1);
-	//}
 
 	return region;
 }
