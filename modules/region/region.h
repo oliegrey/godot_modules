@@ -15,6 +15,51 @@ class Region : public RefCounted {
 public:
 	struct Edge { Vector2i gpos; Vector2i size; };
 
+	struct InternalEntry {
+		enum Type { TYPE_CALLABLE, TYPE_TILE_REF };
+
+		Type type;
+		Callable callable;
+		int32_t tile_index = -1;
+		int32_t layer_offset = -1;
+
+		Vector2i size;
+		int32_t weight;
+
+		static InternalEntry make_callable(
+			const Callable &p_callable,
+			const Vector2i p_size,
+			const int32_t p_weight
+		) {
+			InternalEntry e;
+			e.type = TYPE_CALLABLE;
+			e.callable = p_callable;
+			e.size = p_size;
+			e.weight = p_weight;
+			return e;
+		}
+
+		static InternalEntry make_tile_ref(
+			const int32_t p_tile_index,
+			const int32_t p_layer_offset,
+			const Vector2i p_size,
+			const int32_t p_weight
+		) {
+			InternalEntry e;
+			e.type = TYPE_TILE_REF;
+			e.tile_index = p_tile_index;
+			e.layer_offset = p_layer_offset;
+			e.size = p_size;
+			e.weight = p_weight;
+			return e;
+		}
+	};
+
+	struct Internal {
+		LocalVector<InternalEntry> entries;
+		int32_t anchor_dir = 0;
+	};
+
 	enum Slot { PRIMARY, SECONDARY };
 	enum Direction {
 		NONE = -1,
@@ -79,13 +124,7 @@ public:
 	int threshold;
 	Vector2i g_size_inclusive; // includes stone sides
 
-	LocalVector<LocalVector<Callable>> internal_callables;
-	LocalVector<PackedInt32Array> internal_tile_indexes;
-	LocalVector<PackedInt32Array> internal_layer_offsets;
-
-	LocalVector<LocalVector<Vector2i>> internal_sizes;
-	LocalVector<PackedInt32Array> internal_weights;
-	PackedInt32Array internal_anchor_dir;
+	LocalVector<Internal> internal_choices;
 
 private:
 	static Direction invert_direction(Direction direction) {
@@ -142,10 +181,6 @@ public:
 	int get_threshold() const;
 	Vector2i get_g_size_inclusive() const;
 	PackedInt32Array get_blocked_fill() const;
-	Array get_internal_tile_indexes() const;
-	Array get_internal_layer_offsets() const;
-	Array get_internal_weights() const;
-	PackedInt32Array get_internal_anchor_dir() const;
 
 	static void initialize(Vector2i seg_g_size, bool debug = false);
 
@@ -187,6 +222,8 @@ public:
 		const int exl_upper_bound,
 		const float weights_sum
 	);
+
+	String get_internal_choices_debug() const;
 };
 
 VARIANT_ENUM_CAST(Region::Slot)

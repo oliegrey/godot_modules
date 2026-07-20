@@ -44,8 +44,8 @@ void Region::_bind_methods() {
 			"blocked_sides",
 			"blocked_fill",
 			"joining_sides",
-			"internal_tile_indexes",
-			"internal_layer_offsets",
+			"internal_callable_or_tile_choices",
+			"internal_sizes",
 			"internal_weights",
 			"internal_anchor_dir",
 			"spawn_weight",
@@ -96,6 +96,9 @@ void Region::_bind_methods() {
 	ClassDB::bind_method(
 		D_METHOD("get_g_size_inclusive"), &Region::get_g_size_inclusive
 	);
+	ClassDB::bind_method(
+		D_METHOD("get_internal_choices_debug"), &Region::get_internal_choices_debug
+	);
 	ADD_PROPERTY(
 		PropertyInfo(Variant::STRING, "name"),
 		"", "get_name"
@@ -134,26 +137,6 @@ void Region::_bind_methods() {
 	ADD_PROPERTY(
 		PropertyInfo(Variant::PACKED_INT32_ARRAY, "blocked_fill"),
 		"", "get_blocked_fill"
-	);
-
-	ADD_PROPERTY(
-		PropertyInfo(Variant::ARRAY, "internal_tile_indexes"),
-		"", "get_internal_tile_indexes"
-	);
-
-	ADD_PROPERTY(
-		PropertyInfo(Variant::ARRAY, "internal_layer_offsets"),
-		"", "get_internal_layer_offsets"
-	);
-
-	ADD_PROPERTY(
-		PropertyInfo(Variant::ARRAY, "internal_weights"),
-		"", "get_internal_weights"
-	);
-
-	ADD_PROPERTY(
-		PropertyInfo(Variant::PACKED_INT32_ARRAY, "internal_anchor_dir"),
-		"", "get_internal_anchor_dir"
 	);
 	
 	BIND_ENUM_CONSTANT(NONE);
@@ -212,40 +195,6 @@ PackedInt32Array Region::get_blocked_fill() const {
 	return blocked_fill;
 }
 
-// WARNING: creates a new array, only use for debug or rarely
-Array Region::get_internal_tile_indexes() const {
-	Array arr;
-	arr.resize(internal_tile_indexes.size());
-	for (uint32_t i = 0; i < internal_tile_indexes.size(); i++) {
-		arr[i] = internal_tile_indexes[i];
-	}
-	return arr;
-}
-
-// WARNING: creates a new array, only use for debug or rarely
-Array Region::get_internal_layer_offsets() const {
-	Array arr;
-	arr.resize(internal_layer_offsets.size());
-	for (uint32_t i = 0; i < internal_layer_offsets.size(); i++) {
-		arr[i] = internal_layer_offsets[i];
-	}
-	return arr;
-}
-
-// WARNING: creates a new array, only use for debug or rarely
-Array Region::get_internal_weights() const {
-	Array arr;
-	arr.resize(internal_weights.size());
-	for (uint32_t i = 0; i < internal_weights.size(); i++) {
-		arr[i] = internal_weights[i];
-	}
-	return arr;
-}
-
-PackedInt32Array Region::get_internal_anchor_dir() const {
-	return internal_anchor_dir;
-}
-
 void Region::initialize(Vector2i seg_g_size, bool debug) {
 	for (int dir{ 0 }; dir < m_region_tree.size(); ++dir) {
 		m_region_tree[dir].resize(MAX_CELL_COUNT);
@@ -266,7 +215,7 @@ Ref<Region> Region::create(
 
 	PackedInt32Array _joining_sides,
 
-	TypedArray<Array> internal_callable_or_tile_choices, // [[callable, tile object, callable], [tile object]]
+	TypedArray<Array> internal_callable_or_tile_choices, // [[callable, Tile, callable], [Tile]]
 	TypedArray<PackedVector2Array> internal_sizes,
 	TypedArray<PackedInt32Array> internal_weights,
 	PackedInt32Array internal_anchor_dir,
@@ -287,25 +236,38 @@ Ref<Region> Region::create(
 	region->blocked_fill  = _blocked_fill;
 	region->joining_sides = _joining_sides;
 	
-	int64_t choices_size{ internal_callable_or_tile_choices.size() };
-
-	region->internal_callables.resize(choices_size);
-	region->internal_tile_indexes.resize(choices_size);
-	region->internal_layer_offsets.resize(choices_size);
+	int64_t choice_sets_size{ internal_callable_or_tile_choices.size() };
+	region->internal_choices.resize(choice_sets_size);
 
 	for (int i{ 0 }; i < internal_callable_or_tile_choices.size(); ++i) {
-		Array arr{ internal_callable_or_tile_choices[i] };
 
-		for (Variant variant : arr) {
+		region->internal_choices[i].anchor_dir = internal_anchor_dir[i];
+
+		Array choices{ internal_callable_or_tile_choices[i] };
+		region->internal_choices[i].entries.resize(choices.size());
+
+		for (int j{ 0 }; j < choices.size(); ++j) {
+			Variant variant{ choices[j] };
 			Variant::Type type{ variant.get_type() };
 
 			if (type == Variant::CALLABLE) {
-				region->internal_callables[i].push_back(variant);
+				region->internal_choices[i].entries[j] = (
+					InternalEntry::make_callable(
+						Callable(variant),
+						Vector2i(internal_sizes[i].get(j)),
+						static_cast<int>(internal_weights[i].get(j))
+					)
+				);
 
 			} else if (type == Variant::OBJECT) {
-				region->internal_tile_indexes[i].push_back(variant.get("tile_i"));
-				int layer_i{ variant.get("layer_i") };
-				region->internal_layer_offsets[i].push_back(layer_i * m_seg_cell_count);
+				region->internal_choices[i].entries[j] = (
+					InternalEntry::make_tile_ref(
+						static_cast<int>(variant.get("tile_i")),
+						static_cast<int>(variant.get("layer_i")) * m_seg_cell_count,
+						Vector2i(internal_sizes[i].get(j)),
+						static_cast<int>(internal_weights[i].get(j))
+					)
+				);
 				
 			} else {
 				ERR_FAIL_V_MSG(
@@ -315,20 +277,6 @@ Ref<Region> Region::create(
 			}
 		}
 	}
-
-	region->internal_sizes.resize(internal_sizes.size());
-	for (int i{ 0 }; i < internal_sizes.size(); ++i) {
-		PackedVector2Array grid_positions{ internal_sizes[i] };
-		for (Vector2 gpos : grid_positions) {
-			region->internal_sizes[i].push_back(gpos);
-		}
-	}
-
-	region->internal_weights.resize(internal_weights.size());
-	for (int i{ 0 }; i < internal_weights.size(); ++i) {
-		region->internal_weights[i] = internal_weights[i];
-	}
-	region->internal_anchor_dir = internal_anchor_dir;
 
 	region->spawn_weight = _spawn_weight;
 	region->threshold    = _threshold;
@@ -533,7 +481,6 @@ void Region::generate_zone(
 
 	// how many secondaries we want
 	int target_secondary_count{ max_secondary_count }; //rng->randi_range(max_secondary_count / 4, max_secondary_count)
-
 
 	// free grid position look up based on direction requirement; dir -> [free edge gpos, g_size, ...]
 	DirEdge dir_to_free_edge_gpos{};
@@ -965,3 +912,32 @@ void Region::debug_region(Vector2i gpos, Ref<Region> region, int w_seg) {
 	}
 }
 
+String Region::get_internal_choices_debug() const {
+	String out{ "" };
+
+	for (uint32_t i{ 0 }; i < internal_choices.size(); ++i) {
+		const Internal &choice_set{ internal_choices[i] };
+
+		out += vformat("choice_set[%d] anchor_dir=%d entries=[", i, choice_set.anchor_dir);
+
+		for (uint32_t j{ 0 }; j < choice_set.entries.size(); ++j) {
+			const InternalEntry &entry{ choice_set.entries[j] };
+
+			if (entry.type == InternalEntry::TYPE_CALLABLE) {
+				out += vformat(
+					"{callable=%s, size=%s, weight=%d}, ",
+					entry.callable, entry.size, entry.weight
+				);
+			} else {
+				out += vformat(
+					"{tile_index=%d, layer_offset=%d, size=%s, weight=%d}, ",
+					entry.tile_index, entry.layer_offset, entry.size, entry.weight
+				);
+			}
+		}
+
+		out += "]\n";
+	}
+
+	return out;
+}
