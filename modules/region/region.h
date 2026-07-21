@@ -75,7 +75,7 @@ public:
 
 private:
 	using RegionVector = LocalVector<Ref<Region>>;
-	using DirEdge = std::array<LocalVector<Edge>, 4>;
+	using DirEdge = std::array<LocalVector<Edge>, Direction::DIRECTION_MAX>;
 
 	inline static const Vector2i MAX_G_SIZE{ Vector2i(8, 8) };
 	inline static const int MAX_CELL_COUNT{ 64 };
@@ -195,7 +195,6 @@ public:
 		PackedInt32Array _joining_sides,
 
 		TypedArray<Array> internal_callable_or_tile_choices,
-		TypedArray<PackedVector2Array> internal_sizes,
 		TypedArray<PackedInt32Array> internal_weights,
 		PackedInt32Array internal_anchor_dir,
 

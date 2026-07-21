@@ -45,7 +45,6 @@ void Region::_bind_methods() {
 			"blocked_fill",
 			"joining_sides",
 			"internal_callable_or_tile_choices",
-			"internal_sizes",
 			"internal_weights",
 			"internal_anchor_dir",
 			"spawn_weight",
@@ -99,15 +98,15 @@ void Region::_bind_methods() {
 	ClassDB::bind_method(
 		D_METHOD("get_internal_choices_debug"), &Region::get_internal_choices_debug
 	);
+	ClassDB::bind_method(
+		D_METHOD("get_blocked_fill"), &Region::get_blocked_fill
+	);
 	ADD_PROPERTY(
 		PropertyInfo(Variant::STRING, "name"),
 		"", "get_name"
 	);
 	ADD_PROPERTY(
-		PropertyInfo(
-			Variant::INT, "slot", PROPERTY_HINT_ENUM,
-			"Primary,Secondary"
-		),
+		PropertyInfo(Variant::INT, "slot", PROPERTY_HINT_ENUM, "Primary,Secondary"),
 		"", "get_slot"
 	);
 	ADD_PROPERTY(
@@ -215,8 +214,7 @@ Ref<Region> Region::create(
 
 	PackedInt32Array _joining_sides,
 
-	TypedArray<Array> internal_callable_or_tile_choices, // [[callable, Tile, callable], [Tile]]
-	TypedArray<PackedVector2Array> internal_sizes,
+	TypedArray<Array> internal_class_or_tile_choices, // [[callable, Tile, callable], [Tile]]
 	TypedArray<PackedInt32Array> internal_weights,
 	PackedInt32Array internal_anchor_dir,
 
@@ -236,43 +234,83 @@ Ref<Region> Region::create(
 	region->blocked_fill  = _blocked_fill;
 	region->joining_sides = _joining_sides;
 	
-	int64_t choice_sets_size{ internal_callable_or_tile_choices.size() };
+	int64_t choice_sets_size{ internal_class_or_tile_choices.size() };
 	region->internal_choices.resize(choice_sets_size);
 
-	for (int i{ 0 }; i < internal_callable_or_tile_choices.size(); ++i) {
+	for (int i{ 0 }; i < internal_class_or_tile_choices.size(); ++i) {
 
 		region->internal_choices[i].anchor_dir = internal_anchor_dir[i];
 
-		Array choices{ internal_callable_or_tile_choices[i] };
+		Array choices{ internal_class_or_tile_choices[i] };
 		region->internal_choices[i].entries.resize(choices.size());
 
 		for (int j{ 0 }; j < choices.size(); ++j) {
 			Variant variant{ choices[j] };
 			Variant::Type type{ variant.get_type() };
 
-			if (type == Variant::CALLABLE) {
+			if (type == Variant::DICTIONARY) {
+				Dictionary dict{ variant };
+
+				ERR_FAIL_COND_V_MSG(
+					!dict.has("g_size"), Ref<Region>(),
+					vformat("entry %d of %s dictionary missing g_size", j, _name)
+				);
+				ERR_FAIL_COND_V_MSG(
+					!dict.has("callable"), Ref<Region>(),
+					vformat("entry %d of %s dictionary missing callable", j, _name)
+				);
+
+				Vector2i g_size{ dict["g_size"] };
+				Callable callable{ dict["callable"] };
+
+				ERR_FAIL_COND_V_MSG(
+					!callable.is_valid(), Ref<Region>(),
+					vformat("callable in entry %d of %s is invalid", j, _name)
+				);
+
 				region->internal_choices[i].entries[j] = (
 					InternalEntry::make_callable(
-						Callable(variant),
-						Vector2i(internal_sizes[i].get(j)),
+						callable,
+						g_size,
 						static_cast<int>(internal_weights[i].get(j))
 					)
 				);
 
 			} else if (type == Variant::OBJECT) {
+				bool tile_i_valid{ false };
+				int tile_i{ static_cast<int>(variant.get("tile_i", &tile_i_valid)) };
+				ERR_FAIL_COND_V_MSG(
+					!tile_i_valid, Ref<Region>(),
+					vformat("tile_i missing on entry %d of %s", j, _name)
+				);
+
+				bool layer_i_valid{ false };
+				int layer_i{ static_cast<int>(variant.get("layer_i", &layer_i_valid)) };
+				ERR_FAIL_COND_V_MSG(
+					!layer_i_valid, Ref<Region>(),
+					vformat("layer_i missing on entry %d of %s", j, _name)
+				);
+
+				bool g_size_valid{ false };
+				Vector2i g_size{ variant.get("g_size", &g_size_valid) };
+				ERR_FAIL_COND_V_MSG(
+					!g_size_valid, Ref<Region>(),
+					vformat("g_size missing on tile entry %d of %s", j, _name)
+				);
+
 				region->internal_choices[i].entries[j] = (
 					InternalEntry::make_tile_ref(
-						static_cast<int>(variant.get("tile_i")),
-						static_cast<int>(variant.get("layer_i")) * m_seg_cell_count,
-						Vector2i(internal_sizes[i].get(j)),
+						tile_i,
+						layer_i * m_seg_cell_count,
+						g_size,
 						static_cast<int>(internal_weights[i].get(j))
 					)
 				);
-				
+
 			} else {
 				ERR_FAIL_V_MSG(
 					Ref<Region>(),
-					"incompatible type passed to Region::create for internal_callable_or_tile_choices"
+					vformat("incompatible type passed to Region::create for entry %d of %s", j, _name)
 				);
 			}
 		}
@@ -865,13 +903,8 @@ void Region::add_region(
 	DirEdge &dir_to_free_edge_gpos,
 	int w_seg
 ) {
-	const PackedInt32Array LAYER_OFFSETS{ 0 };
-	const PackedInt32Array TILE_INDEXES{ 0 };
-	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, region->g_size_inclusive, true);
-	add_free_edge_gpos(region, gpos, dir_to_free_edge_gpos);
-	
 	if (is_debug) {
-		WARN_PRINT(vformat("added region %s at %s", region->name, gpos));
+		//WARN_PRINT(vformat("added region %s at %s", region->name, gpos));
 		String a{ "" };
 		for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
 			a += "[";
@@ -880,9 +913,59 @@ void Region::add_region(
 			}
 			a += "], ";
 		}
-		WARN_PRINT(vformat("added edge positions for w_seg %s:\n%s", w_seg, a));
+		//WARN_PRINT(vformat("added edge positions for w_seg %s:\n%s", w_seg, a));
 		debug_region(gpos, region, w_seg);
 	}
+
+	const PackedInt32Array LAYER_OFFSETS{ 0 };
+	const PackedInt32Array TILE_INDEXES{ 0 };
+
+	//////////////////////////////////////////////////////
+	////////////////////////////HERE//////////////////////
+	//////////////////////////////////////////////////////
+	
+	//uint8_t corner_bitmap{ 0 };
+
+	//for (int dir : region->blocked_sides) {
+	//	if (dir == Direction::UP) { // fill up
+	//		pcg->add_tile_rect(
+	//			0,
+	//			0,
+	//			gpos,
+	//			region->g_size_inclusive,
+	//			true
+	//		);
+	//		corner_bitmap |= 1 << 0;
+
+	//	} else if (dir == Direction::LEFT) { // fill left
+	//		corner_bitmap |= 1 << 1;
+
+	//	} else if (dir == Direction::DOWN) { // fill down
+	//		corner_bitmap |= 1 << 2;
+
+	//	} else if (dir == Direction::RIGHT) { // fill right
+	//		corner_bitmap |= 1 << 3;
+
+	//	}
+	//}
+	//if ((corner_bitmap & 0b0011) == 0b0011) { // fill top left corner
+
+	//}
+	//if ((corner_bitmap & 0b0110) == 0b0110) { // fill bottom left corner
+
+	//}
+	//if ((corner_bitmap & 0b1100) == 0b1100) { // fill bottom right corner
+
+	//}
+	//if ((corner_bitmap & 0b1001) == 0b1001) { // fill top right corner
+
+	//}
+
+	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, region->g_size_inclusive, true);
+
+	add_free_edge_gpos(region, gpos, dir_to_free_edge_gpos);
+	
+	
 }
 
 

@@ -1,5 +1,7 @@
 #include "draw.h"
 
+#include "modules/tile/tile.h"
+
 void Draw::_bind_methods() {
 	ClassDB::bind_static_method(
 		"Draw", D_METHOD("create", "layers", "layer_configs", "grid_size"),
@@ -34,9 +36,9 @@ Ref<Draw> Draw::create(
 }
 
 void Draw::segment(
-		const int64_t w_seg,
-		const PackedInt64Array &drawn_indexes,
-		const PackedByteArray &tile_data
+	const int64_t w_seg,
+	const PackedInt64Array &drawn_indexes,
+	const PackedByteArray &tile_data
 ) {
 	int64_t layer_i{ -1 };
 	Array layer_config{};
@@ -53,16 +55,15 @@ void Draw::segment(
 		}
 		const int64_t tile_i{ tile_data[seg_cell_i] };
 
-		Object *tile{ Object::cast_to<Object>(layer_config[tile_i].operator Object *()) };
+		Ref<Tile> tile{ Tile::get_tile(tile_i) };
 
-		const Variant sa{ tile->get("state_atlas_coords") };
-		const Array state_atlas{ sa };
-		const Vector2i atlas_coords{ state_atlas[0] };
+		
 
 		layer->set_cell(
-				Vector2i((bits >> 16) & 0xFFFF, (bits >> 32) & 0xFFFF),
-				0,
-				atlas_coords);
+			Vector2i((bits >> 16) & 0xFFFF, (bits >> 32) & 0xFFFF),
+			0,
+			tile->state_atlas_coords[0]
+		);
 	}
 }
 
