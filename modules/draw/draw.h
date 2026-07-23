@@ -9,20 +9,14 @@ class Draw : public RefCounted {
 public:
 	Vector2i grid_size;
 	int cell_count;
-	Vector<TileMapLayer *> layers;
-	TypedArray<Array> layer_configs;
-
-private:
-
+	LocalVector<TileMapLayer *> layers;
 
 protected:
 	static void _bind_methods();
 
 public:
 	static Ref<Draw> create(
-		const TypedArray<TileMapLayer> &_layers,
-		const TypedArray<Array> &_layer_configs,
-		const Vector2i _grid_size
+		const TypedArray<TileMapLayer> &_layers, const Vector2i _grid_size
 	);
 
 	void segment(

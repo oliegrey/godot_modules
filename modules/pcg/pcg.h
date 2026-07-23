@@ -45,7 +45,7 @@ public:
 	Ref<BitGrid2D> get_generative_occupancy() const;
 	const PackedByteArray& get_tile_data() const { return tile_data; }
 	PackedInt64Array get_drawn_indexes() const {
-		return drawn_indexes.slice(0, drawn_indexes_i); // should only be called once or twice, slice copy is fine
+		return drawn_indexes.slice(0, drawn_indexes_i); // should only be called once or twice per segment on the client, slice copy is fine
 	}
 	int get_drawn_indexes_i() const { return drawn_indexes_i; }
 	int get_used_cell_count() const { return used_cell_count; }
