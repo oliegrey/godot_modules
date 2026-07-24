@@ -1,6 +1,7 @@
 #include "region.h"
 #include "modules/pcg/pcg.h"
 #include "modules/bit_grid_2d/bit_grid_2d.h"
+#include "modules/tile/Tile.h"
 #include "core/math/random_number_generator.h"
 
 #include "scene/gui/label.h"
@@ -246,6 +247,10 @@ Ref<Region> Region::create(
 
 		for (int j{ 0 }; j < choices.size(); ++j) {
 			Variant variant{ choices[j] };
+			ERR_FAIL_COND_V_MSG(
+				variant.get_type() == Variant::NIL, Ref<Region>(),
+				vformat("passed value is null for choice %d", j)
+			);
 			Variant::Type type{ variant.get_type() };
 
 			if (type == Variant::DICTIONARY) {
@@ -277,32 +282,17 @@ Ref<Region> Region::create(
 				);
 
 			} else if (type == Variant::OBJECT) {
-				bool tile_i_valid{ false };
-				int tile_i{ static_cast<int>(variant.get("tile_i", &tile_i_valid)) };
-				ERR_FAIL_COND_V_MSG(
-					!tile_i_valid, Ref<Region>(),
-					vformat("tile_i missing on entry %d of %s", j, _name)
-				);
-
-				bool layer_i_valid{ false };
-				int layer_i{ static_cast<int>(variant.get("layer_i", &layer_i_valid)) };
-				ERR_FAIL_COND_V_MSG(
-					!layer_i_valid, Ref<Region>(),
-					vformat("layer_i missing on entry %d of %s", j, _name)
-				);
-
-				bool g_size_valid{ false };
-				Vector2i g_size{ variant.get("g_size", &g_size_valid) };
-				ERR_FAIL_COND_V_MSG(
-					!g_size_valid, Ref<Region>(),
-					vformat("g_size missing on tile entry %d of %s", j, _name)
+				Ref<Tile> tile{ variant };
+				ERR_FAIL_NULL_V_MSG(
+					tile, Ref<Region>(),
+					vformat("passed value for choice %d is not a Tile or dictionary", j)
 				);
 
 				region->internal_choices[i].entries[j] = (
 					InternalEntry::make_tile_ref(
-						tile_i,
-						layer_i * m_seg_cell_count,
-						g_size,
+						tile->tile,
+						tile->layer * m_seg_cell_count,
+						tile->g_size,
 						static_cast<int>(internal_weights[i].get(j))
 					)
 				);
@@ -408,7 +398,9 @@ void Region::init_dominance_mask() {
 			uint64_t mask{ 0 };
 			for (int x{ tx }; x <= size; ++x) {
 				for (int y{ ty }; y <= size; ++y) {
-					mask |= 1ull << get_size_i(Vector2i(x, y));
+					const int s_i{ get_size_i(Vector2i(x, y)) };
+					ERR_FAIL_COND(s_i == -1);
+					mask |= 1ull << s_i;
 				}
 			}
 
@@ -627,7 +619,9 @@ void Region::generate_zone(
 }
 
 int Region::get_size_i(Vector2i size) {
-	return (size.x - 1) + (size.y - 1) * MAX_G_SIZE.x;
+	const int size_i{ (size.x - 1) + (size.y - 1) * MAX_G_SIZE.x };
+	ERR_FAIL_INDEX_V(size_i, 64, -1);
+	return size_i;
 }
 
 bool Region::try_place_s_region(
@@ -664,8 +658,10 @@ bool Region::try_place_s_region(
 		PackedVector2Array *sized_gpos{ };
 		int64_t idx{ 0 };
 
-		while (true) {
+		constexpr int MAX_SAFE_ITERATIONS = 1000; // generous upper bound; real usage should terminate long before this
 
+		int safety_iter{ 0 };
+		for (; safety_iter < MAX_SAFE_ITERATIONS; ++safety_iter) {
 			if (idx <= 0) {
 				size_i_fit = get_size_or_larger_i(dir_size_occ[req_dir], g_size_inc);
 				if (size_i_fit == -1) {
@@ -674,28 +670,22 @@ bool Region::try_place_s_region(
 				sized_gpos = &dir_size_to_gpos[req_dir_offset + size_i_fit];
 				idx = sized_gpos->size();
 			}
-
 			--idx;
-
 			//warn_print(vformat("found size fit in already scanned for %s", s_region->name));
 			Vector2i gpos{ (*sized_gpos)[idx] };
 			Vector2i found_size{ (size_i_fit % MAX_G_SIZE.x) + 1, (size_i_fit / MAX_G_SIZE.x) + 1 };
-
 			if (dir == Direction::DOWN) {
 				gpos.y -= found_size.y - 1;
 			} else if (dir == Direction::RIGHT) {
 				gpos.x -= found_size.x - 1;
 			}
-
 			PackedVector2Array org_size{
 				gen_occupancy->find_anchored_unset_areas_in_bounds(
-					gpos,
-					found_size,
-					static_cast<BitGrid2D::Direction>(dir),
-					g_size_inc
-				)
+						gpos,
+						found_size,
+						static_cast<BitGrid2D::Direction>(dir),
+						g_size_inc)
 			};
-
 			// edge is no longer empty for whatever reason
 			if (org_size.size() < 2) {
 				// edge cant be used so remove it
@@ -704,11 +694,9 @@ bool Region::try_place_s_region(
 				if (sized_gpos->size() == 0) {
 					dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
 				}
-
 				//warn_print(vformat("edge full on already searched %d", org_size.size()));
 				continue;
 			}
-
 			// there is enough room
 			if (org_size.size() == 2 && org_size[1] == g_size_inc) {
 				Vector2i dir_offset_gpos{ org_size[0] };
@@ -717,42 +705,40 @@ bool Region::try_place_s_region(
 				} else if (req_dir == Direction::LEFT) {
 					dir_offset_gpos.x -= g_size_inc.x - 1;
 				}
-
 				// is this even segment position, or is it in the search space in some way
 				add_region(s_region, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
-
 				// edge filled so remove it
 				sized_gpos->set(idx, (*sized_gpos)[sized_gpos->size() - 1]);
 				sized_gpos->resize(sized_gpos->size() - 1);
 				if (sized_gpos->size() == 0) {
 					dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
 				}
-
 				// edge is being used so remove it
 				//warn_print(vformat("placed from already searched at %s", org_size));
 				return true;
 			}
-
 			// edge doesnt have this size anymore so remove it
 			sized_gpos->set(idx, (*sized_gpos)[sized_gpos->size() - 1]);
 			sized_gpos->resize(sized_gpos->size() - 1);
 			if (sized_gpos->size() == 0) {
 				dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
 			}
-			
 
 			// there are now smaller areas
 			for (int i{ 0 }; i < org_size.size(); i += 2) {
 				Vector2i found_origin{ org_size[i] };
 				Vector2i found_size{ org_size[i + 1] };
-
 				const int s_i{ get_size_i(found_size) };
+				ERR_FAIL_COND_V(s_i == -1, false);
 
 				dir_size_to_gpos[req_dir_offset + s_i].push_back(found_origin);
 				dir_size_occ[req_dir] |= 1ull << s_i;
-
 				//warn_print(vformat("set bit from already searched: %s, origin: %s, size %s", s_i, found_origin, found_size));
 			}
+		}
+
+		if (safety_iter >= MAX_SAFE_ITERATIONS) {
+			ERR_PRINT(vformat("Region placement loop hit safety cap of %d iterations for %s — check for a logic bug in size/occupancy bookkeeping.", MAX_SAFE_ITERATIONS, s_region->name));
 		}
 
 
@@ -830,7 +816,7 @@ bool Region::try_place_s_region(
 				}
 
 				else {
-					search_size.y = prev_g_size.x + g_size.x;
+					search_size.y = prev_g_size.y + g_size.y;
 					if (!s_region->blocked_sides.has(Direction::DOWN)) {
 						search_size.y -= 1;
 					}
@@ -885,6 +871,7 @@ bool Region::try_place_s_region(
 				Vector2i found_size{ org_size[i + 1] };
 
 				const int s_i{ get_size_i(found_size) };
+				ERR_FAIL_COND_V(s_i == -1, false);
 				dir_size_to_gpos[req_dir_offset + s_i].push_back(found_origin);
 				dir_size_occ[req_dir] |= 1ull << s_i;
 

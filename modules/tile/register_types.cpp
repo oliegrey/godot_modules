@@ -9,6 +9,7 @@ void initialize_tile_module(ModuleInitializationLevel p_level) {
 	}
 
 	ClassDB::register_abstract_class<Tile>();
+	Tile::init_layer_configs();
 }
 
 void uninitialize_tile_module(ModuleInitializationLevel p_level) {

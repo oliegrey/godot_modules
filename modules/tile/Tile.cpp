@@ -550,10 +550,11 @@ TypedArray<Vector2i> Tile::get_state_frame_ranges() const {
 }
 
 TypedArray<Tile> Tile::get_layer_tiles(Tile::Layer layer_i) {
+    const LocalVector<Ref<Tile>> &layer_tiles{{ layer_configs[static_cast<int>(layer_i)] }};
     TypedArray<Tile> result;
-    result.resize(layer_configs[static_cast<int>(layer_i)].size());
-    for (uint32_t i = 0; i < layer_configs.size(); i++) {
-        result.set(i, layer_configs[static_cast<int>(layer_i)][i]);
+    result.resize(layer_tiles.size());
+    for (uint32_t i = 0; i < layer_tiles.size(); i++) {
+        result.set(i, layer_tiles[i]);
     }
     return result;
 }

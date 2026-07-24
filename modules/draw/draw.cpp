@@ -46,7 +46,7 @@ void Draw::segment(
 
 		layer->set_cell(
 			Vector2i((bits >> 16) & 0xFFFF, (bits >> 32) & 0xFFFF),
-			0, tile->state_atlas_coords[0]
+			0, tile->get_atlas_coords()
 		);
 	}
 }
