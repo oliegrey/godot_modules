@@ -77,7 +77,7 @@ public:
 		int tile_i,
 		Vector2i seg_gpos,
 		Vector2i g_size,
-		bool add_occupancy
+		bool add_occupancy = true
 	);
 	void add_tiles_rect(
 		PackedInt32Array layer_offsets,

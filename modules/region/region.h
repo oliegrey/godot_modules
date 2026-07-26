@@ -147,6 +147,7 @@ private:
 
 	static void add_region(
 		Ref<Region> region,
+		Ref<RandomNumberGenerator> rng,
 		Ref<PCG> pcg,
 		Vector2i gpos,
 		DirEdge &dir_to_free_edge_gpos,
@@ -167,6 +168,23 @@ private:
 	static void debug_region(Vector2i gpos, Ref<Region> region, int w_seg);
 
 	static int get_size_i(Vector2i size);
+
+	static void fill_blocked(
+		BlockedFill fill,
+		Ref<RandomNumberGenerator> rng,
+		Ref<PCG> pcg,
+		const Vector2i gpos,
+		const Vector2i rect,
+		const bool skip_dirt = false
+	);
+
+	static void fill_blocked_rect(
+		BlockedFill fill,
+		Ref<RandomNumberGenerator> rng,
+		Ref<PCG> pcg,
+		const Vector2i gpos,
+		const Vector2i rect
+	);
 
 protected:
 	static void _bind_methods();

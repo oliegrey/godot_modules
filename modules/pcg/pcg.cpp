@@ -393,9 +393,10 @@ int PCG::add_rand_agnostic_ellipse(
 
 	for (int i{ 0 }; i < count; ++i) {
 		Vector2i rand_origin_gpos = generative_occupancy->find_rand_gpos_ranged_in_state(
-				rng,
-				Vector2i(0, m_seg_grid_size.y),
-				Vector2i(0, m_seg_grid_size.x));
+			rng,
+			Vector2i(0, m_seg_grid_size.y),
+			Vector2i(0, m_seg_grid_size.x)
+		);
 		rand_origin_gpos -= g_size / 2;
 
 		const int local_y0{ MAX(0, -rand_origin_gpos.y) };

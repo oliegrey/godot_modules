@@ -532,7 +532,7 @@ void Region::generate_zone(
 	auto p_gpos{ Vector2i(p_cell_i % m_seg_g_size.x, p_cell_i / m_seg_g_size.x) };
 
 	// place dug tiles in the primaries cells
-	add_region(p_region, pcg, p_gpos, dir_to_free_edge_gpos, w_seg);
+	add_region(p_region, rng, pcg, p_gpos, dir_to_free_edge_gpos, w_seg);
 
 	// get threshold from ordered secondary regions to determine cutoff
 	uint64_t threshold_i{ 0 };
@@ -706,7 +706,7 @@ bool Region::try_place_s_region(
 					dir_offset_gpos.x -= g_size_inc.x - 1;
 				}
 				// is this even segment position, or is it in the search space in some way
-				add_region(s_region, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
+				add_region(s_region, rng, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
 				// edge filled so remove it
 				sized_gpos->set(idx, (*sized_gpos)[sized_gpos->size() - 1]);
 				sized_gpos->resize(sized_gpos->size() - 1);
@@ -857,7 +857,7 @@ bool Region::try_place_s_region(
 				free_edge_gpos.resize(free_edge_gpos.size() - 1);
 
 				// is this even segment position, or is it in the search space in some way
-				add_region(s_region, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
+				add_region(s_region, rng, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
 
 				// edge is being used so remove it
 				//warn_print(vformat("placed at %s", org_size));
@@ -885,6 +885,7 @@ bool Region::try_place_s_region(
 
 void Region::add_region(
 	Ref<Region> region,
+	Ref<RandomNumberGenerator> rng,
 	Ref<PCG> pcg,
 	Vector2i gpos,
 	DirEdge &dir_to_free_edge_gpos,
@@ -907,54 +908,123 @@ void Region::add_region(
 	const PackedInt32Array LAYER_OFFSETS{ 0 };
 	const PackedInt32Array TILE_INDEXES{ 0 };
 
-	//////////////////////////////////////////////////////
-	////////////////////////////HERE//////////////////////
-	//////////////////////////////////////////////////////
+	Vector2i internal_gpos{ gpos };
+	if (region->blocked_sides.has(Direction::UP)) {
+		internal_gpos.y += 1;
+	}
+	if (region->blocked_sides.has(Direction::LEFT)) {
+		internal_gpos.x += 1;
+	}
 	
-	//uint8_t corner_bitmap{ 0 };
+	uint8_t corner_bitmap{ 0 };
 
-	//for (int dir : region->blocked_sides) {
-	//	if (dir == Direction::UP) { // fill up
-	//		pcg->add_tile_rect(
-	//			0,
-	//			0,
-	//			gpos,
-	//			region->g_size_inclusive,
-	//			true
-	//		);
-	//		corner_bitmap |= 1 << 0;
+	for (int i{ 0 }; i < region->blocked_sides.size(); ++i) {
+		int dir{ region->blocked_sides[i] };
+		BlockedFill fill{ static_cast<BlockedFill>(region->blocked_fill[i]) };
+		Vector2i blocked_gpos{ internal_gpos };
+		Vector2i blocked_rect{ region->g_size };
 
-	//	} else if (dir == Direction::LEFT) { // fill left
-	//		corner_bitmap |= 1 << 1;
+		if (dir == Direction::UP) {
+			blocked_gpos -= Vector2i(0, 1);
+			blocked_rect.y = 1;
+			
+		} else if (dir == Direction::DOWN) {
+			blocked_gpos += Vector2i(0, region->g_size.y);
+			blocked_rect.y = 1;
 
-	//	} else if (dir == Direction::DOWN) { // fill down
-	//		corner_bitmap |= 1 << 2;
+		} else if (dir == Direction::LEFT) {
+			blocked_gpos -= Vector2i(1, 0);
+			blocked_rect.x = 1;
 
-	//	} else if (dir == Direction::RIGHT) { // fill right
-	//		corner_bitmap |= 1 << 3;
+		} else if (dir == Direction::RIGHT) {
+			blocked_gpos += Vector2i(region->g_size.x, 0);
+			blocked_rect.x = 1;
+		}
 
-	//	}
-	//}
-	//if ((corner_bitmap & 0b0011) == 0b0011) { // fill top left corner
+		corner_bitmap |= 1 << dir;
+		fill_blocked(fill, rng, pcg, blocked_gpos, blocked_rect);
+	}
+	if ((corner_bitmap & 0b0101) == 0b0101) { // fill top left corner
+		Vector2i blocked_gpos{ internal_gpos + Vector2i(-1, -1) };
+		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
+	}
+	if ((corner_bitmap & 0b0110) == 0b0110) { // fill bottom left corner
+		Vector2i blocked_gpos{ internal_gpos + Vector2i(-1, region->g_size.y) };
+		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
+	}
+	if ((corner_bitmap & 0b1010) == 0b1010) { // fill bottom right corner
+		Vector2i blocked_gpos{ internal_gpos + region->g_size };
+		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
+	}
+	if ((corner_bitmap & 0b1001) == 0b1001) { // fill top right corner
+		Vector2i blocked_gpos{ internal_gpos + Vector2i(region->g_size.x, -1) };
+		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
+	}
 
-	//}
-	//if ((corner_bitmap & 0b0110) == 0b0110) { // fill bottom left corner
-
-	//}
-	//if ((corner_bitmap & 0b1100) == 0b1100) { // fill bottom right corner
-
-	//}
-	//if ((corner_bitmap & 0b1001) == 0b1001) { // fill top right corner
-
-	//}
-
-	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, gpos, region->g_size_inclusive, true);
+	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, internal_gpos, region->g_size, true);
 
 	add_free_edge_gpos(region, gpos, dir_to_free_edge_gpos);
-	
-	
 }
 
+void Region::fill_blocked(
+	BlockedFill fill,
+	Ref<RandomNumberGenerator> rng,
+	Ref<PCG> pcg,
+	const Vector2i gpos,
+	const Vector2i rect,
+	const bool skip_dirt
+) {
+	if (fill == BlockedFill::ANY) {
+		fill = static_cast<BlockedFill>(rng->randi_range(0, 2));
+	}
+	else if (fill == BlockedFill::ANY_STONE) {
+		fill = static_cast<BlockedFill>(rng->randi_range(1, 2));
+	}
+
+	if (fill == BlockedFill::DIRT && skip_dirt) {
+		return;
+	}
+	else if (fill == BlockedFill::MIX) {
+		int total_cells{ rect.x * rect.y };
+		int required_rand_chunks{ static_cast<int>(ceil(total_cells / 32.0)) };
+		for (int rand_chunk_i{ 0 }; rand_chunk_i < required_rand_chunks; ++rand_chunk_i) {
+			uint32_t bitmap{ rng->randi() };
+			for (int bitmap_pos{ 0 }; bitmap_pos < 32; ++bitmap_pos) {
+				bool is_set{ static_cast<bool>(bitmap & (1 << bitmap_pos)) };
+				fill = is_set ? BlockedFill::DIRT : BlockedFill::STONE;
+				int total_offset{ bitmap_pos + rand_chunk_i * 32 };
+				if (total_offset >= total_cells) {
+					break;
+				}
+				Vector2i rect_offset{ total_offset % rect.x, total_offset / rect.x };
+				Vector2i offset_gpos{ gpos + rect_offset };
+				fill_blocked_rect(fill, rng, pcg, offset_gpos, Vector2i(1, 1));
+			}
+		}
+	} else {
+		fill_blocked_rect(fill, rng, pcg, gpos, rect);
+	}
+}
+
+void Region::fill_blocked_rect(
+	BlockedFill fill,
+	Ref<RandomNumberGenerator> rng,
+	Ref<PCG> pcg,
+	const Vector2i gpos,
+	const Vector2i rect
+) {
+	int tile_i{ 0 };
+	if (fill == BlockedFill::DIRT) {
+		tile_i = Tile::get_tile(Tile::DIRT)->tile;
+		 //->get_variation(rng)->tile;
+	}
+	if (fill == BlockedFill::STONE) {
+		tile_i = Tile::get_tile(Tile::ROCK)->tile;
+		 //->get_variation(rng)->tile;
+	}
+	const int offset{ Tile::Layer::COLLISION * m_seg_cell_count };
+	pcg->add_tile_rect(offset, tile_i, gpos, rect);
+}
 
 void Region::debug_region(Vector2i gpos, Ref<Region> region, int w_seg) {
 	const Vector2i size{ region->g_size_inclusive };
