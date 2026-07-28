@@ -1,6 +1,7 @@
 #include "pcg.h"
 #include "modules/bit_grid_2d/bit_grid_2d.h"
 #include "modules/subgrid_probe/subgrid_probe.h"
+#include "modules/tile/Tile.h"
 #include "core/math/random_number_generator.h"
 
 void PCG::_bind_methods() {
@@ -35,10 +36,11 @@ void PCG::_bind_methods() {
 			"layer_offset",
 			"tile_i",
 			"seg_gpos",
-			"add_occupancy"
+			"add_occupancy",
+			"tile_variation_rng"
 		),
 		&PCG::add_gpos_tile,
-		DEFVAL(true)
+		DEFVAL(true), DEFVAL(Ref<RandomNumberGenerator>())
 	);
 	ClassDB::bind_method(
 		D_METHOD(
@@ -46,10 +48,11 @@ void PCG::_bind_methods() {
 			"layer_offsets",
 			"tile_indexes",
 			"seg_gpos",
-			"add_occupancy"
+			"add_occupancy",
+			"tile_variation_rng"
 		),
 		&PCG::add_gpos_tiles,
-		DEFVAL(true)
+		DEFVAL(true), DEFVAL(Ref<RandomNumberGenerator>())
 	);
 	ClassDB::bind_method(
 		D_METHOD(
@@ -58,10 +61,11 @@ void PCG::_bind_methods() {
 			"tile_i",
 			"seg_gpos",
 			"g_size",
-			"add_occupancy"
+			"add_occupancy",
+			"tile_variation_rng"
 		),
 		&PCG::add_tile_rect,
-		DEFVAL(true)
+		DEFVAL(true), DEFVAL(Ref<RandomNumberGenerator>())
 	);
 	ClassDB::bind_method(
 		D_METHOD(
@@ -70,10 +74,11 @@ void PCG::_bind_methods() {
 			"tile_indexes",
 			"seg_gpos",
 			"g_size",
-			"add_occupancy"
+			"add_occupancy",
+			"tile_variation_rng"
 		),
 		&PCG::add_tiles_rect,
-		DEFVAL(true)
+		DEFVAL(true), DEFVAL(Ref<RandomNumberGenerator>())
 	);
 	ClassDB::bind_method(
 		D_METHOD(
@@ -82,10 +87,11 @@ void PCG::_bind_methods() {
 			"tile_i",
 			"seg_gpos",
 			"g_size",
-			"add_occupancy"
+			"add_occupancy",
+			"tile_variation_rng"
 		),
 		&PCG::add_tile_ellipse,
-		DEFVAL(true)
+		DEFVAL(true), DEFVAL(Ref<RandomNumberGenerator>())
 	);
 	ClassDB::bind_method(
 		D_METHOD(
@@ -94,10 +100,11 @@ void PCG::_bind_methods() {
 			"tile_indexes",
 			"seg_gpos",
 			"g_size",
-			"add_occupancy"
+			"add_occupancy",
+			"tile_variation_rng"
 		),
 		&PCG::add_tiles_ellipse,
-		DEFVAL(true)
+		DEFVAL(true), DEFVAL(Ref<RandomNumberGenerator>())
 	);
 	ClassDB::bind_method(
 		D_METHOD(
@@ -108,12 +115,14 @@ void PCG::_bind_methods() {
 			"g_size",
 			"count",
 			"advance_bucket",
-			"add_occupancy"
+			"add_occupancy",
+			"use_tile_variations"
 		),
 		&PCG::add_rand_agnostic_ellipse,
 		DEFVAL(1),
 		DEFVAL(Ref<SubgridProbe>()),
-		DEFVAL(true)
+		DEFVAL(true),
+		DEFVAL(false)
 	);
 	ClassDB::bind_method(
 		D_METHOD(
@@ -123,12 +132,14 @@ void PCG::_bind_methods() {
 			"tile_i",
 			"count",
 			"advance_bucket",
-			"add_occupancy"
+			"add_occupancy",
+			"use_tile_variations"
 		),
 		&PCG::add_rand,
 		DEFVAL(1),
 		DEFVAL(Ref<SubgridProbe>()),
-		DEFVAL(true)
+		DEFVAL(true),
+		DEFVAL(false)
 	);
 
 	ClassDB::bind_method(
@@ -137,21 +148,30 @@ void PCG::_bind_methods() {
 			"layer_offsets",
 			"tile_indexes",
 			"seg_gpos_y",
-			"add_occupancy"
+			"add_occupancy",
+			"tile_variation_rng"
 		),
 		&PCG::add_row,
-		DEFVAL(true)
+		DEFVAL(true), DEFVAL(Ref<RandomNumberGenerator>())
 	);
 	ClassDB::bind_method(
-		D_METHOD("fill", "tile_i", "set_occupancy", "layer_offset"),
+		D_METHOD(
+			"fill", "tile_i", "set_occupancy", "layer_offset", "tile_variation_rng"
+		),
 		&PCG::fill,
-		DEFVAL(255), DEFVAL(false), DEFVAL(-1)
+		DEFVAL(255), DEFVAL(false), DEFVAL(-1), DEFVAL(Ref<RandomNumberGenerator>())
 	);
 
 	ClassDB::bind_method(
-		D_METHOD("fill_unoccupied", "tile_i", "set_occupancy", "layer_offset"),
+		D_METHOD(
+			"fill_unoccupied",
+			"tile_i",
+			"set_occupancy",
+			"layer_offset",
+			"tile_variation_rng"
+		),
 		&PCG::fill_unoccupied,
-		DEFVAL(255), DEFVAL(false), DEFVAL(-1)
+		DEFVAL(255), DEFVAL(false), DEFVAL(-1), DEFVAL(Ref<RandomNumberGenerator>())
 	);
 
 	ClassDB::bind_method(
@@ -217,9 +237,7 @@ void PCG::add_drawn_index(int layer_cell_i, Vector2i seg_gpos) {
 	Vector2i w_gpos{ to_world(seg_gpos) };
 	drawn_indexes.set( // TileMapLayer is 2 byte coordinates
 		drawn_indexes_i,
-		layer_cell_i |
-		w_gpos.x << 16 |
-		static_cast<int64_t>(w_gpos.y) << 32
+		layer_cell_i | w_gpos.x << 16 | static_cast<int64_t>(w_gpos.y) << 32
 	);
 	drawn_indexes_i += 1;
 }
@@ -237,8 +255,15 @@ void PCG::add_cell_i(
 }
 
 void PCG::add_gpos_tile(
-	int layer_offset, int tile_i, Vector2i seg_gpos, bool add_occupancy
+	int layer_offset,
+	int tile_i,
+	Vector2i seg_gpos,
+	bool add_occupancy,
+	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
+	if (tile_variation_rng != Ref<RandomNumberGenerator>()) {
+		tile_i = Tile::get_variation_i(tile_variation_rng, tile_i);
+	}
 	int cell_i{ get_cell_i(seg_gpos) };
 	add_cell_i(layer_offset + cell_i, cell_i, tile_i, seg_gpos, add_occupancy);
 }
@@ -247,12 +272,35 @@ void PCG::add_gpos_tiles(
 	PackedInt32Array layer_offsets,
 	PackedInt32Array tile_indexes,
 	Vector2i seg_gpos,
-	bool add_occupancy
+	bool add_occupancy,
+	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
 	for (int i{ 0 }; i < tile_indexes.size(); ++i) {
 		add_gpos_tile(
-			layer_offsets[i], tile_indexes[i], seg_gpos, add_occupancy
+			layer_offsets[i],
+			tile_indexes[i],
+			seg_gpos,
+			add_occupancy,
+			tile_variation_rng
 		);
+	}
+}
+
+void PCG::add_row(
+	PackedInt32Array layer_offsets,
+	PackedInt32Array tile_indexes,
+	int seg_gpos_y,
+	bool add_occupancy,
+	Ref<RandomNumberGenerator> tile_variation_rng
+) {
+	for (int i{ 0 }; i < layer_offsets.size(); ++i) {
+		int tile_i{ tile_indexes[i] };
+		int layer_offset{ layer_offsets[i] };
+
+		for (int seg_gpos_x{ 0 }; seg_gpos_x < m_seg_grid_size.x; ++seg_gpos_x) {
+			const Vector2i gpos{ Vector2i(seg_gpos_x, seg_gpos_y) };
+			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy, tile_variation_rng);
+		}
 	}
 }
 
@@ -261,12 +309,13 @@ void PCG::add_tile_rect(
 	int tile_i,
 	Vector2i seg_gpos,
 	Vector2i g_size,
-	bool add_occupancy
+	bool add_occupancy,
+	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
 	for (int y{ 0 }; y < g_size.y; ++y) {
 		for (int x{ 0 }; x < g_size.x; ++x) {
 			const Vector2i gpos{ seg_gpos + Vector2i(x, y) };
-			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
+			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy, tile_variation_rng);
 		}
 	}
 }
@@ -276,10 +325,18 @@ void PCG::add_tiles_rect(
 	PackedInt32Array tile_indexes,
 	Vector2i seg_gpos,
 	Vector2i g_size,
-	bool add_occupancy
+	bool add_occupancy,
+	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
 	for (int i{ 0 }; i < tile_indexes.size(); ++i) {
-		add_tile_rect(layer_offsets[i], tile_indexes[i], seg_gpos, g_size, add_occupancy);
+		add_tile_rect(
+			layer_offsets[i],
+			tile_indexes[i],
+			seg_gpos,
+			g_size,
+			add_occupancy,
+			tile_variation_rng
+		);
 	}
 }
 
@@ -288,7 +345,8 @@ void PCG::add_tile_ellipse(
 	int tile_i,
 	Vector2i seg_gpos,
 	Vector2i g_size,
-	bool add_occupancy
+	bool add_occupancy,
+	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
 	const float rx{ g_size.x / 2.0f };
 	const float ry{ g_size.y / 2.0f };
@@ -310,7 +368,7 @@ void PCG::add_tile_ellipse(
 			) {
 				continue;
 			}
-			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
+			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy, tile_variation_rng);
 		}
 	}
 }
@@ -320,55 +378,15 @@ void PCG::add_tiles_ellipse(
 	PackedInt32Array tile_indexes,
 	Vector2i seg_gpos,
 	Vector2i g_size,
-	bool add_occupancy
+	bool add_occupancy,
+	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
 	for (int i{ 0 }; i < tile_indexes.size(); ++i) {
 		const int tile_i{ tile_indexes[i] };
 		const int layer_offset{ layer_offsets[i] };
-		add_tile_ellipse(layer_offset, tile_i, seg_gpos, g_size, add_occupancy);
-	}
-}
-
-void PCG::add_row(
-	PackedInt32Array layer_offsets,
-	PackedInt32Array tile_indexes,
-	int seg_gpos_y,
-	bool add_occupancy
-) {
-	for (int i{ 0 }; i < layer_offsets.size(); ++i) {
-		int tile_i{ tile_indexes[i] };
-		int layer_offset{ layer_offsets[i] };
-
-		for (int seg_gpos_x{ 0 }; seg_gpos_x < m_seg_grid_size.x; ++seg_gpos_x) {
-			const Vector2i gpos{ Vector2i(seg_gpos_x, seg_gpos_y) };
-			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
-		}
-	}
-}
-
-void PCG::fill(int tile_i, bool add_occupancy, int layer_offset) {
-	tile_data.fill(tile_i);
-	if (add_occupancy) { generative_occupancy->fill(); }
-	if (!m_is_server) {
-		ERR_FAIL_COND_MSG(layer_offset < 0, "layer_offset is required for client");
-		for (int x{ 0 }; x < m_seg_grid_size.x; ++x) {
-			for (int y{ 0 }; y < m_seg_grid_size.y; ++y) {
-				Vector2i gpos{ Vector2i(x, y) };
-				int layer_cell_i{ get_layer_cell_i(layer_offset, gpos) };
-				add_drawn_index(layer_cell_i, gpos);
-			}
-		}
-	}
-}
-
-void PCG::fill_unoccupied(int tile_i, bool add_occupancy, int layer_offset) {
-	for (int x{ 0 }; x < m_seg_grid_size.x; ++x) {
-		for (int y{ 0 }; y < m_seg_grid_size.y; ++y) {
-			Vector2i gpos{ Vector2i(x, y) };
-			if (!generative_occupancy->is_gpos_set(gpos)) {
-				add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
-			}
-		}
+		add_tile_ellipse(
+			layer_offset, tile_i, seg_gpos, g_size, add_occupancy, tile_variation_rng
+		);
 	}
 }
 
@@ -379,7 +397,8 @@ int PCG::add_rand_agnostic_ellipse(
 	Vector2i g_size,
 	int count,
 	Ref<SubgridProbe> advance_bucket,
-	bool add_occupancy
+	bool add_occupancy,
+	bool use_tile_variations
 ) {
 	int total_set{ 0 };
 	if (g_size.x <= 0 || g_size.y <= 0) {
@@ -434,7 +453,13 @@ int PCG::add_rand_agnostic_ellipse(
 				const Vector2i gpos{ rand_origin_gpos.x + x, row_y };
 
 				if (!generative_occupancy->is_gpos_set(gpos)) {
-					add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
+
+					Ref<RandomNumberGenerator> tile_variation_rng{
+						use_tile_variations ? rng : Ref<RandomNumberGenerator>()
+					};
+					add_gpos_tile(
+						layer_offset, tile_i, gpos, add_occupancy, tile_variation_rng
+					);
 					if (has_bucket) {
 						advance_bucket->advance_gpos_bucketing(gpos);
 					}
@@ -447,22 +472,79 @@ int PCG::add_rand_agnostic_ellipse(
 	return total_set;
 }
 
-
 void PCG::add_rand(
 	Ref<RandomNumberGenerator> rng,
 	int layer_offset,
 	int tile_i,
 	int count,
 	Ref<SubgridProbe> advance_bucket,
-	bool add_occupancy
+	bool add_occupancy,
+	bool use_tile_variations
 ) {
 	const bool has_bucket{ advance_bucket != Ref<SubgridProbe>() };
+
 	for (int i{ 0 }; i < count; ++i) {
 		Vector2i gpos = generative_occupancy->find_rand_gpos_in_state(rng);
+
 		if (!generative_occupancy->is_gpos_set(gpos)) {
-			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy);
+			Ref<RandomNumberGenerator> tile_variation_rng{
+				use_tile_variations ? rng : Ref<RandomNumberGenerator>()
+			};
+			
+			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy, tile_variation_rng);
+
 			if (has_bucket) {
 				advance_bucket->advance_gpos_bucketing(gpos);
+			}
+		}
+	}
+}
+
+void PCG::fill(
+	int tile_i,
+	bool add_occupancy,
+	int layer_offset,
+	Ref<RandomNumberGenerator> tile_variation_rng
+) {
+	if (tile_variation_rng == Ref<RandomNumberGenerator>()) {
+		add_tile_rect(
+			layer_offset,
+			tile_i,
+			Vector2i(0, 0),
+			m_seg_grid_size,
+			add_occupancy,
+			tile_variation_rng
+		);
+	}
+	else {
+		tile_data.fill(tile_i);
+		if (add_occupancy) { generative_occupancy->fill(); }
+		if (!m_is_server) {
+			ERR_FAIL_COND_MSG(layer_offset < 0, "layer_offset is required for client");
+			for (int x{ 0 }; x < m_seg_grid_size.x; ++x) {
+				for (int y{ 0 }; y < m_seg_grid_size.y; ++y) {
+					Vector2i gpos{ Vector2i(x, y) };
+					int layer_cell_i{ get_layer_cell_i(layer_offset, gpos) };
+					add_drawn_index(layer_cell_i, gpos);
+				}
+			}
+		}
+	}
+}
+
+void PCG::fill_unoccupied(
+	int tile_i,
+	bool add_occupancy,
+	int layer_offset,
+	Ref<RandomNumberGenerator> tile_variation_rng
+) {
+	for (int x{ 0 }; x < m_seg_grid_size.x; ++x) {
+		for (int y{ 0 }; y < m_seg_grid_size.y; ++y) {
+			Vector2i gpos{ Vector2i(x, y) };
+			if (!generative_occupancy->is_gpos_set(gpos)) {
+				add_gpos_tile(
+					layer_offset, tile_i, gpos, add_occupancy, tile_variation_rng
+				);
 			}
 		}
 	}

@@ -62,14 +62,16 @@ public:
 		int layer_offset,
 		int tile_i,
 		Vector2i seg_gpos,
-		bool add_occupancy = true
+		bool add_occupancy = true,
+		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
 
 	void add_gpos_tiles(
 		PackedInt32Array layer_offsets,
 		PackedInt32Array tile_indexes,
 		Vector2i seg_gpos,
-		bool add_occupancy = true
+		bool add_occupancy = true,
+		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
 
 	void add_tile_rect(
@@ -77,28 +79,32 @@ public:
 		int tile_i,
 		Vector2i seg_gpos,
 		Vector2i g_size,
-		bool add_occupancy = true
+		bool add_occupancy = true,
+		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
 	void add_tiles_rect(
 		PackedInt32Array layer_offsets,
 		PackedInt32Array tile_indexes,
 		Vector2i seg_gpos,
 		Vector2i g_size,
-		bool add_occupancy = true
+		bool add_occupancy = true,
+		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
 	void add_tile_ellipse(
 		int layer_offset,
 		int tile_i,
 		Vector2i seg_gpos,
 		Vector2i g_size,
-		bool add_occupancy = true
+		bool add_occupancy = true,
+		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
 	void add_tiles_ellipse(
 		PackedInt32Array layer_offsets,
 		PackedInt32Array tile_indexes,
 		Vector2i seg_gpos,
 		Vector2i g_size,
-		bool add_occupancy = true
+		bool add_occupancy = true,
+		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
 	int add_rand_agnostic_ellipse(
 		Ref<RandomNumberGenerator> rng,
@@ -107,7 +113,8 @@ public:
 		Vector2i g_size,
 		int count = 1,
 		Ref<SubgridProbe> advance_bucket = Ref<SubgridProbe>(),
-		bool add_occupancy = true
+		bool add_occupancy = true,
+		bool use_tile_variations = false
 	);
 	void add_rand(
 		Ref<RandomNumberGenerator> rng,
@@ -115,25 +122,30 @@ public:
 		int tile_i,
 		int count = 1,
 		Ref<SubgridProbe> advance_bucket = Ref<SubgridProbe>(),
-		bool add_occupancy = true
+		bool add_occupancy = true,
+		bool use_tile_variations = false
 	);
-
-	int randi_range_exp(Ref<RandomNumberGenerator> rng, int max, int min = 0);
-
 	void add_row(
 		PackedInt32Array layer_offsets,
 		PackedInt32Array tile_indexes,
 		int seg_gpos_y,
-		bool add_occupancy = true
+		bool add_occupancy = true,
+		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
-
 	void fill(
-		int tile_i = 255, bool add_occupancy = false, int layer_offset = -1
+		int tile_i = 255,
+		bool add_occupancy = false,
+		int layer_offset = -1,
+		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
-
 	void fill_unoccupied(
-		int tile_i = 255, bool add_occupancy = false, int layer_offset = -1
+		int tile_i = 255,
+		bool add_occupancy = false,
+		int layer_offset = -1,
+		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
 
 	void clear_occupancy() const;
+
+	int randi_range_exp(Ref<RandomNumberGenerator> rng, int max, int min = 0);
 };

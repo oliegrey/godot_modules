@@ -78,7 +78,7 @@ public:
 		RIGHT = 3,
 		DIRECTION_MAX = 4
 	};
-	enum Placement { RANDOM, CENTER, LEFT, RIGHT, FILL };
+	enum Placement { RANDOM, CENTER, START, END, FILL };
 	enum BlockedFill { DIRT, STONE, MIX, ANY, ANY_STONE };
 
 private:

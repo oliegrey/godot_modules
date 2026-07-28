@@ -42,42 +42,43 @@ public:
 		BOULDER = 4,
 		DIRT = 5,
 		DIRT2 = 6,
-		ROCK = 7,
+		DIRT3 = 7,
+		ROCK = 8,
     };
     enum Decoration {
-		CLOUD = 8,
-		CLOUD2 = 9,
-		CLOUD3 = 10,
-		CLOUD4 = 11,
-		CLOUD5 = 12,
-		GRASS = 13,
-		STALACTITE = 14,
-		STALAGMITE = 15,
+		CLOUD = 9,
+		CLOUD2 = 10,
+		CLOUD3 = 11,
+		CLOUD4 = 12,
+		CLOUD5 = 13,
+		GRASS = 14,
+		STALACTITE = 15,
+		STALAGMITE = 16,
     };
     enum Foreground {
-		FOREGROUND_SIGNPOST = 16,
+		FOREGROUND_SIGNPOST = 17,
     };
     enum Interactable {
-		AGRENIC = 17,
-		CRYSTAL = 18,
-		MEGAMOREL = 19,
-		SIGNPOST = 20,
+		AGRENIC = 18,
+		CRYSTAL = 19,
+		MEGAMOREL = 20,
+		SIGNPOST = 21,
     };
     enum Mineable {
-		AZUREEL = 21,
-		COAL = 22,
-		GOLD = 23,
-		ILLEGIBLE_PARCHMENT = 24,
-		IMALADITE = 25,
-		IRON = 26,
-		NULLSCRAP = 27,
-		SALT = 28,
-		SILVER = 29,
-		SKELETON = 30,
-		STRANGE_COINS = 31,
+		AZUREEL = 22,
+		COAL = 23,
+		GOLD = 24,
+		ILLEGIBLE_PARCHMENT = 25,
+		IMALADITE = 26,
+		IRON = 27,
+		NULLSCRAP = 28,
+		SALT = 29,
+		SILVER = 30,
+		SKELETON = 31,
+		STRANGE_COINS = 32,
     };
 
-    inline static constexpr int MAX_TILE{32};
+    inline static constexpr int MAX_TILE{33};
     
     Tile() {}
     Tile(
@@ -101,6 +102,7 @@ public:
     inline static LocalVector<Ref<Tile>> tile_configs;
     inline static const PackedStringArray layer_names{ "background", "collision", "decoration", "foreground", "interactable", "mineable" };
     inline static std::array<HashMap<Vector2i, Ref<Tile>>, MAX_LAYER> atlas_coord_to_tile;
+    inline static std::array<int, MAX_TILE> random_group_lengths;
     
     Layer layer = BACKGROUND;
     int tile = 0;
@@ -115,22 +117,23 @@ public:
     
 public: 
     inline static Ref<Tile> get_atlas_coord_tile(Layer layer_i, Vector2i atlas_coord);
-    inline static void init_layer_configs();
+    static void init_layer_configs();
     static Ref<Tile> get_tile(int tile);
     inline static String get_layer_name(Layer layer_i);
     inline static const LocalVector<Ref<Tile>> &get_layer(Layer layer_i);
     inline static TypedArray<Tile> get_layer_tiles(Tile::Layer layer_i);
+    static int get_variation_i(Ref<RandomNumberGenerator> rng, int tile_i);
     
     virtual String to_string() override { 
         return vformat("Tile(tile_name:%s, tile_i:%d)", name, tile); 
     }
     String get_name() const;
     Ref<Tile> get_foreground();
+    Ref<Tile> get_variation(Ref<RandomNumberGenerator> rng);
     Vector2i get_g_size() const;
     Layer get_layer_e() const;
     int get_tile_e() const;
     PackedInt32Array get_frame_durations_ms() const;
-    Ref<Tile> get_variation(Ref<RandomNumberGenerator> rng);
     Vector2i get_atlas_coords(State p_state = MAX_STATE);
     PackedInt32Array get_states() const;
     TypedArray<Vector2i> get_state_frame_ranges() const;

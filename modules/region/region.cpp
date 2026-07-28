@@ -42,17 +42,21 @@ void Region::_bind_methods() {
 			"name",
 			"slot",
 			"g_size",
+			"spawn_weight",
+			"threshold",
+
 			"blocked_sides",
 			"blocked_fill",
 			"joining_sides",
+
 			"internal_callable_or_tile_choices",
 			"internal_weights",
 			"internal_anchor_dir",
-			"spawn_weight",
-			"threshold"
+			"internal_placements"
 		),
 		&Region::create
 	);
+
 	ClassDB::bind_static_method("Region", D_METHOD("finalize"), &Region::finalize);
 
 	ClassDB::bind_static_method(
@@ -149,8 +153,11 @@ void Region::_bind_methods() {
 	BIND_ENUM_CONSTANT(PRIMARY);
 	BIND_ENUM_CONSTANT(SECONDARY);
 
-	BIND_ENUM_CONSTANT(FILL);
 	BIND_ENUM_CONSTANT(RANDOM);
+	BIND_ENUM_CONSTANT(CENTER);
+	BIND_ENUM_CONSTANT(START);
+	BIND_ENUM_CONSTANT(END);
+	BIND_ENUM_CONSTANT(FILL);
 
 	BIND_ENUM_CONSTANT(DIRT);
 	BIND_ENUM_CONSTANT(STONE);
@@ -639,9 +646,6 @@ bool Region::try_place_s_region(
 		Direction dir{ static_cast<Direction>(dir_i) };
 		Direction req_dir{ invert_direction(dir) };
 
-		const Vector2i g_size_inc{ g_size_inclusive };
-		const Vector2i g_size{ g_size };
-
 		LocalVector<Edge> &free_edge_gpos{ dir_to_free_edge_gpos[req_dir] };
 
 		// look for it in the tree of already searched and catalogued areas
@@ -656,7 +660,7 @@ bool Region::try_place_s_region(
 		int safety_iter{ 0 };
 		for (; safety_iter < MAX_SAFE_ITERATIONS; ++safety_iter) {
 			if (idx <= 0) {
-				size_i_fit = get_size_or_larger_i(dir_size_occ[req_dir], g_size_inc);
+				size_i_fit = get_size_or_larger_i(dir_size_occ[req_dir], g_size_inclusive);
 				if (size_i_fit == -1) {
 					break;
 				}
@@ -674,10 +678,11 @@ bool Region::try_place_s_region(
 			}
 			PackedVector2Array org_size{
 				gen_occupancy->find_anchored_unset_areas_in_bounds(
-						gpos,
-						found_size,
-						static_cast<BitGrid2D::Direction>(dir),
-						g_size_inc)
+					gpos,
+					found_size,
+					static_cast<BitGrid2D::Direction>(dir),
+					g_size_inclusive
+				)
 			};
 			// edge is no longer empty for whatever reason
 			if (org_size.size() < 2) {
@@ -691,12 +696,12 @@ bool Region::try_place_s_region(
 				continue;
 			}
 			// there is enough room
-			if (org_size.size() == 2 && org_size[1] == g_size_inc) {
+			if (org_size.size() == 2 && org_size[1] == g_size_inclusive) {
 				Vector2i dir_offset_gpos{ org_size[0] };
 				if (req_dir == Direction::UP) {
-					dir_offset_gpos.y -= g_size_inc.y - 1;
+					dir_offset_gpos.y -= g_size_inclusive.y - 1;
 				} else if (req_dir == Direction::LEFT) {
-					dir_offset_gpos.x -= g_size_inc.x - 1;
+					dir_offset_gpos.x -= g_size_inclusive.x - 1;
 				}
 				// is this even segment position, or is it in the search space in some way
 				add_region(rng, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
@@ -749,7 +754,7 @@ bool Region::try_place_s_region(
 			// connected to the previous region while using the maximum search size
 			Vector2i search_origin{ gpos };
 			Vector2i search_size{ 8, 8 };
-			Vector2i wanted_size{ g_size_inc };
+			Vector2i wanted_size{ g_size_inclusive };
 
 			// different rules for 1 length if there are stone sides because it will never fit
 			if (req_dir == Direction::UP) {
@@ -823,7 +828,7 @@ bool Region::try_place_s_region(
 					search_origin,
 					search_size,
 					static_cast<BitGrid2D::Direction>(dir),
-					g_size_inc
+					g_size_inclusive
 				)
 			};
 
@@ -838,12 +843,12 @@ bool Region::try_place_s_region(
 			}
 
 			// there is enough room
-			if (org_size.size() == 2 && org_size[1] == g_size_inc) {
+			if (org_size.size() == 2 && org_size[1] == g_size_inclusive) {
 				Vector2i dir_offset_gpos{ org_size[0] };
 				if (dir == Direction::DOWN) {
-					dir_offset_gpos.y -= g_size_inc.y - 1;
+					dir_offset_gpos.y -= g_size_inclusive.y - 1;
 				} else if (dir == Direction::RIGHT) {
-					dir_offset_gpos.x -= g_size_inc.x - 1;
+					dir_offset_gpos.x -= g_size_inclusive.x - 1;
 				}
 
 				free_edge_gpos[gpos_i] = free_edge_gpos[free_edge_gpos.size() - 1];
@@ -894,7 +899,7 @@ void Region::add_region(
 			a += "], ";
 		}
 		//WARN_PRINT(vformat("added edge positions for w_seg %s:\n%s", w_seg, a));
-		debug_region(gpos, w_seg);
+		debug_region(gpos, this, w_seg);
 	}
 
 	const PackedInt32Array LAYER_OFFSETS{ 0 };
@@ -1015,14 +1020,13 @@ void Region::fill_blocked_rect(
 ) {
 	int tile_i{ 0 };
 	if (fill == BlockedFill::DIRT) {
-		tile_i = Tile::get_tile(Tile::DIRT)->tile;
-		 //->get_variation(rng)->tile;
+		tile_i = Tile::get_tile(Tile::DIRT)->get_variation(rng)->tile;
 	}
 	if (fill == BlockedFill::STONE) {
-		tile_i = Tile::get_tile(Tile::ROCK)->tile;
-		 //->get_variation(rng)->tile;
+		tile_i = Tile::get_tile(Tile::ROCK)->get_variation(rng)->tile;
 	}
 	const int offset{ Tile::Layer::COLLISION * m_seg_cell_count };
+
 	pcg->add_tile_rect(offset, tile_i, gpos, rect);
 }
 
@@ -1058,20 +1062,22 @@ String Region::get_internal_choices_debug() const {
 	for (uint32_t i{ 0 }; i < internal_choices.size(); ++i) {
 		const Internal &choice_set{ internal_choices[i] };
 
-		out += vformat("choice_set[%d] anchor_dir=%d entries=[", i, choice_set.anchor_dir);
+		out += vformat("choice_set[%d] entries=[", i);
 
 		for (uint32_t j{ 0 }; j < choice_set.entries.size(); ++j) {
 			const InternalEntry &entry{ choice_set.entries[j] };
 
 			if (entry.type == InternalEntry::TYPE_CALLABLE) {
+
 				out += vformat(
-					"{callable=%s, size=%s, weight=%d}, ",
-					entry.callable, entry.size, entry.weight
+					"{callable(%s), size(%s), weight(%d), anchor_dir(%s), placement(%s)}, ",
+					entry.callable, entry.size, entry.weight, entry.anchor_dir, entry.placement
 				);
+
 			} else {
 				out += vformat(
-					"{tile_index=%d, layer_offset=%d, size=%s, weight=%d}, ",
-					entry.tile_index, entry.layer_offset, entry.size, entry.weight
+					"{tile_index(%s), layer_offset(%s), size(%s), weight(%s), anchor_dir(%s), placement(%s)}, ",
+					entry.tile_index, entry.layer_offset, entry.size, entry.weight, entry.anchor_dir, entry.placement
 				);
 			}
 		}
