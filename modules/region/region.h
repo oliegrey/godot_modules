@@ -1,6 +1,8 @@
 #pragma once
 
 #include "core/object/ref_counted.h"
+#include "core/variant/array.h"
+#include "core/variant/typed_array.h"
 
 #include <array>
 
@@ -25,17 +27,23 @@ public:
 
 		Vector2i size;
 		int32_t weight;
+		int32_t anchor_dir;
+		int32_t placement;
 
 		static InternalEntry make_callable(
 			const Callable &p_callable,
 			const Vector2i p_size,
-			const int32_t p_weight
+			const int32_t p_weight,
+			const int32_t p_anchor_dir,
+			const int32_t p_placement
 		) {
 			InternalEntry e;
 			e.type = TYPE_CALLABLE;
 			e.callable = p_callable;
 			e.size = p_size;
 			e.weight = p_weight;
+			e.anchor_dir = p_anchor_dir;
+			e.placement = p_placement;
 			return e;
 		}
 
@@ -43,7 +51,9 @@ public:
 			const int32_t p_tile_index,
 			const int32_t p_layer_offset,
 			const Vector2i p_size,
-			const int32_t p_weight
+			const int32_t p_weight,
+			const int32_t p_anchor_dir,
+			const int32_t p_placement
 		) {
 			InternalEntry e;
 			e.type = TYPE_TILE_REF;
@@ -51,14 +61,13 @@ public:
 			e.layer_offset = p_layer_offset;
 			e.size = p_size;
 			e.weight = p_weight;
+			e.anchor_dir = p_anchor_dir;
+			e.placement = p_placement;
 			return e;
 		}
 	};
 
-	struct Internal {
-		LocalVector<InternalEntry> entries;
-		int32_t anchor_dir = 0;
-	};
+	struct Internal { LocalVector<InternalEntry> entries; };
 
 	enum Slot { PRIMARY, SECONDARY };
 	enum Direction {
@@ -69,8 +78,7 @@ public:
 		RIGHT = 3,
 		DIRECTION_MAX = 4
 	};
-
-	enum Placement { FILL = -1, RANDOM = -2 };
+	enum Placement { RANDOM, CENTER, LEFT, RIGHT, FILL };
 	enum BlockedFill { DIRT, STONE, MIX, ANY, ANY_STONE };
 
 private:
@@ -83,13 +91,6 @@ private:
 
 	inline static Vector2i m_seg_g_size;
 	inline static int m_seg_cell_count;
-
-	// index = attachment Direction [0 - 3] * quad size flattened i.e. (4 * 3)
-	// -> all secondary regions that fit size and direction
-	// RegionVector ordered by threshold so its easy to iterate within bounds
-	inline static std::array<RegionVector, FLAT_TREE_SIZE> m_region_tree{};
-	// bitmap to find the next size that has matching regions
-	inline static std::array<uint64_t, Direction::DIRECTION_MAX> m_region_tree_occ{};
 
 	// attachment direction (already placed regions perspective) [0 - 3] -> region
 	// to get a random region to test in a free direction
@@ -141,12 +142,9 @@ private:
 
 	static int get_size_or_larger_i(uint64_t bitmap, const Vector2i size);
 
-	static void add_free_edge_gpos(
-		Ref<Region> region, Vector2i gpos, DirEdge &dir_to_free_edge_gpos
-	);
+	void add_free_edge_gpos(Vector2i gpos, DirEdge &dir_to_free_edge_gpos);
 
-	static void add_region(
-		Ref<Region> region,
+	void add_region(
 		Ref<RandomNumberGenerator> rng,
 		Ref<PCG> pcg,
 		Vector2i gpos,
@@ -154,9 +152,8 @@ private:
 		int w_seg
 	);
 
-	static bool try_place_s_region(
+	bool try_place_s_region(
 		Ref<RandomNumberGenerator> rng,
-		Ref<Region> s_region,
 		std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
 		std::array<PackedVector2Array, FLAT_TREE_SIZE> &dir_size_to_gpos,
 		Ref<PCG> pcg,
@@ -186,6 +183,10 @@ private:
 		const Vector2i rect
 	);
 
+	void fill_blocked_edges(
+		Vector2i internal_gpos, Ref<RandomNumberGenerator> rng, Ref<PCG> pcg
+	);
+
 protected:
 	static void _bind_methods();
 
@@ -206,18 +207,19 @@ public:
 		String _name,
 		Slot _slot,
 		Vector2i _g_size,
-
-		PackedInt32Array _blocked_sides,
-		PackedInt32Array _blocked_fill,
-
-		PackedInt32Array _joining_sides,
-
-		TypedArray<Array> internal_callable_or_tile_choices,
-		TypedArray<PackedInt32Array> internal_weights,
-		PackedInt32Array internal_anchor_dir,
-
 		int _spawn_weight,
-		int _threshold
+		int _threshold,
+
+		PackedInt32Array _blocked_sides = PackedInt32Array{},
+		PackedInt32Array _blocked_fill = PackedInt32Array{},
+		PackedInt32Array _joining_sides = PackedInt32Array{
+			Direction::UP, Direction::DOWN, Direction::LEFT, Direction::RIGHT
+		},
+
+		TypedArray<Array> internal_class_or_tile_choices = TypedArray<Array>{}, // arrays of [callable, tile_i, ...]
+		TypedArray<PackedInt32Array> internal_weights = TypedArray<PackedInt32Array>{},
+		TypedArray<PackedInt32Array> internal_anchor_dirs = TypedArray<PackedInt32Array>{},
+		TypedArray<PackedInt32Array> internal_placements = TypedArray<PackedInt32Array>{}
 	);
 
 	static void finalize();

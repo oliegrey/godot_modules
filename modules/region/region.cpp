@@ -196,9 +196,6 @@ PackedInt32Array Region::get_blocked_fill() const {
 }
 
 void Region::initialize(Vector2i seg_g_size, bool debug) {
-	for (int dir{ 0 }; dir < m_region_tree.size(); ++dir) {
-		m_region_tree[dir].resize(MAX_CELL_COUNT);
-	}
 	m_seg_g_size = seg_g_size;
 	m_seg_cell_count = seg_g_size.x * seg_g_size.y;
 	is_debug = debug;
@@ -206,26 +203,28 @@ void Region::initialize(Vector2i seg_g_size, bool debug) {
 }
 
 Ref<Region> Region::create(
-	String _name,
-	Slot _slot,
-	Vector2i _g_size,
+		String _name,
+		Slot _slot,
+		Vector2i _g_size,
+		int _spawn_weight,
+		int _threshold,
 
-	PackedInt32Array _blocked_sides,
-	PackedInt32Array _blocked_fill,
+		PackedInt32Array _blocked_sides,
+		PackedInt32Array _blocked_fill,
+		PackedInt32Array _joining_sides,
 
-	PackedInt32Array _joining_sides,
-
-	TypedArray<Array> internal_class_or_tile_choices, // [[callable, Tile, callable], [Tile]]
-	TypedArray<PackedInt32Array> internal_weights,
-	PackedInt32Array internal_anchor_dir,
-
-	int _spawn_weight,
-	int _threshold
+		TypedArray<Array> internal_class_or_tile_choices, // arrays of [callable, tile_i, ...]
+		TypedArray<PackedInt32Array> internal_weights,
+		TypedArray<PackedInt32Array> internal_anchor_dirs,
+		TypedArray<PackedInt32Array> internal_placements
 ) {
 	ERR_FAIL_COND_V_MSG(
-		m_region_tree[0].size() == 0, Ref<Region>(), "Region is not intialized"
+		internal_class_or_tile_choices.size() != internal_weights.size() ||
+		internal_class_or_tile_choices.size() != internal_anchor_dirs.size() ||
+		internal_class_or_tile_choices.size() != internal_placements.size(),
+		Ref<Region>(), "choices, weights, anchor_dirs and placements must be of equal length"
 	);
-
+	
 	Ref<Region> region;
 	region.instantiate();
 	region->name          = _name;
@@ -239,9 +238,17 @@ Ref<Region> Region::create(
 	region->internal_choices.resize(choice_sets_size);
 
 	for (int i{ 0 }; i < internal_class_or_tile_choices.size(); ++i) {
+		const PackedInt32Array &internal_weight     = internal_weights[i];
+		const PackedInt32Array &internal_anchor_dir = internal_anchor_dirs[i];
+		const PackedInt32Array &internal_placement  = internal_placements[i];
 
-		region->internal_choices[i].anchor_dir = internal_anchor_dir[i];
-
+		ERR_FAIL_COND_V_MSG(
+			internal_weight.size() != internal_anchor_dir.size() ||
+			internal_weight.size() != internal_placement.size(),
+			Ref<Region>(),
+			vformat("internal configs are not of the same length for %s", i)
+		);
+		
 		Array choices{ internal_class_or_tile_choices[i] };
 		region->internal_choices[i].entries.resize(choices.size());
 
@@ -272,20 +279,27 @@ Ref<Region> Region::create(
 					!callable.is_valid(), Ref<Region>(),
 					vformat("callable in entry %d of %s is invalid", j, _name)
 				);
+				ERR_FAIL_COND_V_MSG(
+					g_size.x <= 0 || g_size.y <= 0, Ref<Region>(),
+					vformat("g_size area is <= 0 in entry %d of %s", j, _name)
+				);
 
 				region->internal_choices[i].entries[j] = (
 					InternalEntry::make_callable(
 						callable,
 						g_size,
-						static_cast<int>(internal_weights[i].get(j))
+						internal_weight.get(j),
+						internal_anchor_dir.get(j),
+						internal_placement.get(j)
 					)
 				);
+			}
 
-			} else if (type == Variant::OBJECT) {
-				Ref<Tile> tile{ variant };
+			else if (type == Variant::INT) {
+				Ref<Tile> tile{ Tile::get_tile(variant) };
 				ERR_FAIL_NULL_V_MSG(
 					tile, Ref<Region>(),
-					vformat("passed value for choice %d is not a Tile or dictionary", j)
+					vformat("not valid tile enum or dictionary for entry %d of %s", j, _name)
 				);
 
 				region->internal_choices[i].entries[j] = (
@@ -293,7 +307,9 @@ Ref<Region> Region::create(
 						tile->tile,
 						tile->layer * m_seg_cell_count,
 						tile->g_size,
-						static_cast<int>(internal_weights[i].get(j))
+						internal_weight.get(j),
+						internal_anchor_dir.get(j),
+						internal_placement.get(j)
 					)
 				);
 
@@ -360,24 +376,6 @@ void Region::finalize() {
 			}
 		);
 	}
-
-	//for (int cell_i{ 0 }; cell_i < MAX_CELL_COUNT; ++cell_i) {
-	//	int cell_i{ 0 };
-
-	//	
-
-	//	const int i{ dir * MAX_CELL_COUNT + cell_i };
-
-	//	std::sort(
-	//		m_region_tree[i].ptr(),
-	//		m_region_tree[i].ptr() + m_region_tree[i].size(),
-	//		[](const Ref<Region> &a, const Ref<Region> &b) {
-	//			return a->threshold < b->threshold;
-	//		}
-	//	);
-
-	//	++cell_i;
-	//}
 
 	m_secondary_weights.resize(m_secondary_regions.size());
 	for (uint64_t i{ 0 }; i < m_secondary_regions.size(); ++i) {
@@ -451,13 +449,11 @@ int Region::rand_weighted_bound(
 	return exl_upper_bound - 1;
 }
 
-void Region::add_free_edge_gpos(
-	Ref<Region> region, Vector2i gpos, DirEdge& dir_to_free_edge_gpos
-) {
-	Vector2i size{ region->g_size };
+void Region::add_free_edge_gpos(Vector2i gpos, DirEdge& dir_to_free_edge_gpos) {
+	Vector2i size{ g_size };
 
 	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
-		if (region->blocked_sides.has(dir)) {
+		if (blocked_sides.has(dir)) {
 			continue;
 		}
 
@@ -465,25 +461,25 @@ void Region::add_free_edge_gpos(
 
 		if (dir == Direction::UP) {
 			edge_gpos.y -= 1;
-			if (region->blocked_sides.has(Direction::LEFT)) {
+			if (blocked_sides.has(Direction::LEFT)) {
 				edge_gpos.x += 1;
 			}
 
 		} else if (dir == Direction::DOWN) {
 			edge_gpos.y += size.y;
-			if (region->blocked_sides.has(Direction::LEFT)) {
+			if (blocked_sides.has(Direction::LEFT)) {
 				edge_gpos.x += 1;
 			}
 
 		} else if (dir == Direction::LEFT) {
 			edge_gpos.x -= 1;
-			if (region->blocked_sides.has(Direction::UP)) {
+			if (blocked_sides.has(Direction::UP)) {
 				edge_gpos.y += 1;
 			}
 
 		} else if (dir == Direction::RIGHT) {
 			edge_gpos.x += size.x;
-			if (region->blocked_sides.has(Direction::UP)) {
+			if (blocked_sides.has(Direction::UP)) {
 				edge_gpos.y += 1;
 			}
 		}
@@ -532,7 +528,7 @@ void Region::generate_zone(
 	auto p_gpos{ Vector2i(p_cell_i % m_seg_g_size.x, p_cell_i / m_seg_g_size.x) };
 
 	// place dug tiles in the primaries cells
-	add_region(p_region, rng, pcg, p_gpos, dir_to_free_edge_gpos, w_seg);
+	p_region->add_region(rng, pcg, p_gpos, dir_to_free_edge_gpos, w_seg);
 
 	// get threshold from ordered secondary regions to determine cutoff
 	uint64_t threshold_i{ 0 };
@@ -560,9 +556,8 @@ void Region::generate_zone(
 		Ref<Region> s_region{ m_secondary_regions[secondary_i] };
 
 		bool is_placed{
-			try_place_s_region(
+			s_region->try_place_s_region(
 				rng,
-				s_region,
 				dir_size_occ,
 				dir_size_to_gpos,
 				pcg,
@@ -594,9 +589,8 @@ void Region::generate_zone(
 		for (Ref<Region> s_region: s_region_rejects) {
 
 			bool success {
-				try_place_s_region(
+				s_region->try_place_s_region(
 					rng,
-					s_region,
 					dir_size_occ,
 					dir_size_to_gpos,
 					pcg,
@@ -626,7 +620,6 @@ int Region::get_size_i(Vector2i size) {
 
 bool Region::try_place_s_region(
 	Ref<RandomNumberGenerator> rng,
-	Ref<Region> s_region,
 	std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
 	std::array<PackedVector2Array, FLAT_TREE_SIZE> &dir_size_to_gpos,
 	Ref<PCG> pcg,
@@ -636,18 +629,18 @@ bool Region::try_place_s_region(
 ) {
 	//warn_print(vformat("attempting to place %s", s_region->name));
 
-	const int64_t side_count{ s_region->joining_sides.size() };
+	const int64_t side_count{ joining_sides.size() };
 	int start_dir_i{ rng->randi_range(0, side_count - 1) };
 
 	for (int64_t dir_offset{ 0 }; dir_offset < side_count; ++dir_offset) {
 
-		int dir_i{ s_region->joining_sides[(start_dir_i + dir_offset) % side_count] };
+		int dir_i{ joining_sides[(start_dir_i + dir_offset) % side_count] };
 
 		Direction dir{ static_cast<Direction>(dir_i) };
 		Direction req_dir{ invert_direction(dir) };
 
-		const Vector2i g_size_inc{ s_region->g_size_inclusive };
-		const Vector2i g_size{ s_region->g_size };
+		const Vector2i g_size_inc{ g_size_inclusive };
+		const Vector2i g_size{ g_size };
 
 		LocalVector<Edge> &free_edge_gpos{ dir_to_free_edge_gpos[req_dir] };
 
@@ -706,7 +699,7 @@ bool Region::try_place_s_region(
 					dir_offset_gpos.x -= g_size_inc.x - 1;
 				}
 				// is this even segment position, or is it in the search space in some way
-				add_region(s_region, rng, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
+				add_region(rng, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
 				// edge filled so remove it
 				sized_gpos->set(idx, (*sized_gpos)[sized_gpos->size() - 1]);
 				sized_gpos->resize(sized_gpos->size() - 1);
@@ -738,7 +731,7 @@ bool Region::try_place_s_region(
 		}
 
 		if (safety_iter >= MAX_SAFE_ITERATIONS) {
-			ERR_PRINT(vformat("Region placement loop hit safety cap of %d iterations for %s — check for a logic bug in size/occupancy bookkeeping.", MAX_SAFE_ITERATIONS, s_region->name));
+			ERR_PRINT(vformat("Region placement loop hit safety cap of %d iterations for %s — check for a logic bug in size/occupancy bookkeeping.", MAX_SAFE_ITERATIONS, name));
 		}
 
 
@@ -762,20 +755,20 @@ bool Region::try_place_s_region(
 			if (req_dir == Direction::UP) {
 				search_origin.y -= 7;
 
-				if (prev_g_size.x == 1 && s_region->blocked_sides.has(Direction::LEFT)) {
+				if (prev_g_size.x == 1 && blocked_sides.has(Direction::LEFT)) {
 					search_size.x = 1;
 					wanted_size = Vector2i(0, 0);
 				}
 
 				else {
 					search_size.x = prev_g_size.x + g_size.x;
-					if (!s_region->blocked_sides.has(Direction::RIGHT)) {
+					if (!blocked_sides.has(Direction::RIGHT)) {
 						search_size.x -= 1;
 					}
 				}
 				
 			} else if (req_dir == Direction::DOWN) {
-				if (prev_g_size.x == 1 && s_region->blocked_sides.has(Direction::RIGHT)) {
+				if (prev_g_size.x == 1 && blocked_sides.has(Direction::RIGHT)) {
 					search_size.x = 1;
 					wanted_size = Vector2i(0, 0);
 				}
@@ -784,7 +777,7 @@ bool Region::try_place_s_region(
 					search_origin.x -= g_size.x; 
 					search_size.x = prev_g_size.x + g_size.x;
 					
-					if (!s_region->blocked_sides.has(Direction::LEFT)) {
+					if (!blocked_sides.has(Direction::LEFT)) {
 						search_origin.x += 1;
 						search_size.x -= 1;
 					}
@@ -793,7 +786,7 @@ bool Region::try_place_s_region(
 			} else if (req_dir == Direction::LEFT) {;
 				search_origin.x -= 7;
 
-				if (prev_g_size.y == 1 && s_region->blocked_sides.has(Direction::UP)) {
+				if (prev_g_size.y == 1 && blocked_sides.has(Direction::UP)) {
 					search_size.y = 1;
 					wanted_size = Vector2i(0, 0);
 				}
@@ -802,7 +795,7 @@ bool Region::try_place_s_region(
 					search_origin.y -= g_size.y;
 					search_size.y = prev_g_size.y + g_size.y;
 					
-					if (!s_region->blocked_sides.has(Direction::UP)) {
+					if (!blocked_sides.has(Direction::UP)) {
 						search_origin.y += 1;
 						search_size.y -= 1;
 					}
@@ -810,14 +803,14 @@ bool Region::try_place_s_region(
 
 
 			} else if (req_dir == Direction::RIGHT) {
-				if (prev_g_size.y == 1 && s_region->blocked_sides.has(Direction::UP)) {
+				if (prev_g_size.y == 1 && blocked_sides.has(Direction::UP)) {
 					search_size.y = 1;
 					wanted_size = Vector2i(0, 0);
 				}
 
 				else {
 					search_size.y = prev_g_size.y + g_size.y;
-					if (!s_region->blocked_sides.has(Direction::DOWN)) {
+					if (!blocked_sides.has(Direction::DOWN)) {
 						search_size.y -= 1;
 					}
 				}
@@ -857,7 +850,7 @@ bool Region::try_place_s_region(
 				free_edge_gpos.resize(free_edge_gpos.size() - 1);
 
 				// is this even segment position, or is it in the search space in some way
-				add_region(s_region, rng, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
+				add_region(rng, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
 
 				// edge is being used so remove it
 				//warn_print(vformat("placed at %s", org_size));
@@ -884,7 +877,6 @@ bool Region::try_place_s_region(
 }
 
 void Region::add_region(
-	Ref<Region> region,
 	Ref<RandomNumberGenerator> rng,
 	Ref<PCG> pcg,
 	Vector2i gpos,
@@ -902,34 +894,46 @@ void Region::add_region(
 			a += "], ";
 		}
 		//WARN_PRINT(vformat("added edge positions for w_seg %s:\n%s", w_seg, a));
-		debug_region(gpos, region, w_seg);
+		debug_region(gpos, w_seg);
 	}
 
 	const PackedInt32Array LAYER_OFFSETS{ 0 };
 	const PackedInt32Array TILE_INDEXES{ 0 };
 
 	Vector2i internal_gpos{ gpos };
-	if (region->blocked_sides.has(Direction::UP)) {
+	if (blocked_sides.has(Direction::UP)) {
 		internal_gpos.y += 1;
 	}
-	if (region->blocked_sides.has(Direction::LEFT)) {
+	if (blocked_sides.has(Direction::LEFT)) {
 		internal_gpos.x += 1;
 	}
 	
+	fill_blocked_edges(internal_gpos, rng, pcg);
+
+	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, internal_gpos, g_size, true);
+
+	add_free_edge_gpos(gpos, dir_to_free_edge_gpos);
+}
+
+void Region::fill_blocked_edges(
+	Vector2i internal_gpos,
+	Ref<RandomNumberGenerator> rng,
+	Ref<PCG> pcg
+) {
 	uint8_t corner_bitmap{ 0 };
 
-	for (int i{ 0 }; i < region->blocked_sides.size(); ++i) {
-		int dir{ region->blocked_sides[i] };
-		BlockedFill fill{ static_cast<BlockedFill>(region->blocked_fill[i]) };
+	for (int i{ 0 }; i < blocked_sides.size(); ++i) {
+		int dir{ blocked_sides[i] };
+		BlockedFill fill{ static_cast<BlockedFill>(blocked_fill[i]) };
 		Vector2i blocked_gpos{ internal_gpos };
-		Vector2i blocked_rect{ region->g_size };
+		Vector2i blocked_rect{ g_size };
 
 		if (dir == Direction::UP) {
 			blocked_gpos -= Vector2i(0, 1);
 			blocked_rect.y = 1;
 			
 		} else if (dir == Direction::DOWN) {
-			blocked_gpos += Vector2i(0, region->g_size.y);
+			blocked_gpos += Vector2i(0, g_size.y);
 			blocked_rect.y = 1;
 
 		} else if (dir == Direction::LEFT) {
@@ -937,7 +941,7 @@ void Region::add_region(
 			blocked_rect.x = 1;
 
 		} else if (dir == Direction::RIGHT) {
-			blocked_gpos += Vector2i(region->g_size.x, 0);
+			blocked_gpos += Vector2i(g_size.x, 0);
 			blocked_rect.x = 1;
 		}
 
@@ -949,21 +953,17 @@ void Region::add_region(
 		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
 	}
 	if ((corner_bitmap & 0b0110) == 0b0110) { // fill bottom left corner
-		Vector2i blocked_gpos{ internal_gpos + Vector2i(-1, region->g_size.y) };
+		Vector2i blocked_gpos{ internal_gpos + Vector2i(-1, g_size.y) };
 		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
 	}
 	if ((corner_bitmap & 0b1010) == 0b1010) { // fill bottom right corner
-		Vector2i blocked_gpos{ internal_gpos + region->g_size };
+		Vector2i blocked_gpos{ internal_gpos + g_size };
 		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
 	}
 	if ((corner_bitmap & 0b1001) == 0b1001) { // fill top right corner
-		Vector2i blocked_gpos{ internal_gpos + Vector2i(region->g_size.x, -1) };
+		Vector2i blocked_gpos{ internal_gpos + Vector2i(g_size.x, -1) };
 		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
 	}
-
-	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, internal_gpos, region->g_size, true);
-
-	add_free_edge_gpos(region, gpos, dir_to_free_edge_gpos);
 }
 
 void Region::fill_blocked(
