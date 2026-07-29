@@ -210,20 +210,20 @@ void Region::initialize(Vector2i seg_g_size, bool debug) {
 }
 
 Ref<Region> Region::create(
-		String _name,
-		Slot _slot,
-		Vector2i _g_size,
-		int _spawn_weight,
-		int _threshold,
+	String _name,
+	Slot _slot,
+	Vector2i _g_size,
+	int _spawn_weight,
+	int _threshold,
 
-		PackedInt32Array _blocked_sides,
-		PackedInt32Array _blocked_fill,
-		PackedInt32Array _joining_sides,
+	PackedInt32Array _blocked_sides,
+	PackedInt32Array _blocked_fill,
+	PackedInt32Array _joining_sides,
 
-		TypedArray<Array> internal_class_or_tile_choices, // arrays of [callable, tile_i, ...]
-		TypedArray<PackedInt32Array> internal_weights,
-		TypedArray<PackedInt32Array> internal_anchor_dirs,
-		TypedArray<PackedInt32Array> internal_placements
+	TypedArray<Array> internal_class_or_tile_choices, // arrays of [callable, tile_i, ...]
+	TypedArray<PackedInt32Array> internal_weights,
+	TypedArray<PackedInt32Array> internal_anchor_dirs,
+	TypedArray<PackedInt32Array> internal_placements
 ) {
 	ERR_FAIL_COND_V_MSG(
 		internal_class_or_tile_choices.size() != internal_weights.size() ||
@@ -266,9 +266,11 @@ Ref<Region> Region::create(
 		}
 
 		PackedFloat32Array *n_weights{ &region->internal_choices[i].norm_weights };
-		n_weights->resize(internal_weights.size());
+		n_weights->resize(weights.size());
+		float cum_weight{ 0.0 }; 
 		for (int j{ 0 }; j < n_weights->size(); ++j) {
-			n_weights->set(j, weights[j] / total_weight);
+			cum_weight += weights[j] / total_weight;
+			n_weights->set(j, cum_weight);
 		}
 
 		for (int j{ 0 }; j < choices.size(); ++j) {
@@ -291,7 +293,7 @@ Ref<Region> Region::create(
 					vformat("entry %d of %s dictionary missing callable", j, _name)
 				);
 
-				Vector2i g_size{ dict["g_size"] };
+				Vector2i callable_g_size{ dict["g_size"] };
 				Callable callable{ dict["callable"] };
 
 				ERR_FAIL_COND_V_MSG(
@@ -299,14 +301,18 @@ Ref<Region> Region::create(
 					vformat("callable in entry %d of %s is invalid", j, _name)
 				);
 				ERR_FAIL_COND_V_MSG(
-					g_size.x <= 0 || g_size.y <= 0, Ref<Region>(),
-					vformat("g_size area is <= 0 in entry %d of %s", j, _name)
+					callable_g_size.x <= 0 || callable_g_size.y <= 0, Ref<Region>(),
+					vformat("callable_g_size area is <= 0 in entry %d of %s", j, _name)
+				);
+				ERR_FAIL_COND_V_MSG(
+					callable_g_size.x > _g_size.x || callable_g_size.y > _g_size.y, Ref<Region>(),
+					vformat("callable_g_size(%s) is larger than region _g_size(%s)", callable_g_size, _g_size)
 				);
 
 				region->internal_choices[i].choice_set[j] = (
 					InternalEntry::make_callable(
 						callable,
-						g_size,
+						callable_g_size,
 						internal_anchor_dir.get(j),
 						internal_placement.get(j)
 					)
@@ -926,38 +932,87 @@ void Region::add_region(
 		Tile::DUG * m_seg_cell_count, Tile::DUG, internal_gpos, g_size, false, rng
 	);
 
+	fill_internal(internal_gpos, rng, pcg);
+
+	pcg->generative_occupancy->set_area(internal_gpos, g_size); // ensure dug doesnt get overwritten
+
 	add_free_edge_gpos(gpos, dir_to_free_edge_gpos);
 }
 
 void Region::fill_internal(
-	Vector2i internal_gpos,
+	Vector2i w_internal_gpos,
 	Ref<RandomNumberGenerator> rng,
 	Ref<PCG> pcg
 ) {
-	//Type type;
-	//Callable callable;
-	//int32_t tile_index = -1;
-	//int32_t layer_offset = -1;
-
-	//Vector2i size;
-	//int32_t weight;
-	//int32_t anchor_dir;
-	//int32_t placement;
-
 	for (InternalChoiceSet choice_sets : internal_choices) {
 
-		uint32_t rand_f{ rng->randf() };
+		// weighted random choice
+		float rand_f{ rng->randf() };
 		int choice_i{ 0 };
 		for (; choice_i < choice_sets.norm_weights.size(); ++choice_i) {
 			if (choice_sets.norm_weights[choice_i] >= rand_f) {
 				break;
 			}
 		}
-
+		if (choice_i >= choice_sets.norm_weights.size()) {
+			choice_i = choice_sets.norm_weights.size() - 1;
+		}
 		InternalEntry choice{ choice_sets.choice_set[choice_i] };
-		Vector2i seg_placement_gpos{ 0, 0 };
 
-		if (choice.placement == Placement::START) {
+		if (choice.placement == Placement::FILL) {
+			Vector2i limit{ m_seg_g_size - choice.size };
+
+			for (int x{ 0 }; x < limit.x; x += choice.size.x) {
+				for (int y{ 0 }; y < limit.y; y += choice.size.y) {
+					try_place_internal(choice, w_internal_gpos + Vector2i(x, y), pcg, rng);
+				}
+			}
+
+			continue;
+		}
+
+		Vector2i seg_placement_gpos{ 0, 0 };
+		if (choice.placement == Placement::CENTER) {
+			seg_placement_gpos = g_size / 2 - choice.size / 2;
+
+		} else if (choice.placement == Placement::END) {
+			if (choice.anchor_dir == Direction::UP) {
+				seg_placement_gpos.x = g_size.x - choice.size.x;
+			} else if (choice.anchor_dir == Direction::DOWN || choice.anchor_dir == Direction::RIGHT) {
+				seg_placement_gpos = g_size - choice.size;
+			} else if (choice.anchor_dir == Direction::LEFT) {
+				seg_placement_gpos.y = g_size.y - choice.size.y;
+			}
+
+		} else if (choice.placement == Placement::RANDOM) {
+			Vector2i origin{ w_internal_gpos };
+			Vector2i search_size{ g_size };
+
+			if (choice.anchor_dir == Direction::UP) {
+				search_size.y = choice.size.y;
+			} else if (choice.anchor_dir == Direction::DOWN) {
+				search_size.y = choice.size.y;
+				origin.y += g_size.y - choice.size.y;
+			} else if (choice.anchor_dir == Direction::LEFT) {
+				search_size.x = choice.size.x;
+			} else if (choice.anchor_dir == Direction::RIGHT) {
+				search_size.x = choice.size.x;
+				origin.x += g_size.x - choice.size.x;
+
+			BitGrid2D::Direction bit_dir{ static_cast<BitGrid2D::Direction>(choice.anchor_dir) };
+			PackedVector2Array unset_org_size{
+				pcg->generative_occupancy->find_rand_anchored_unset_area_in_bounds(
+					rng, origin, search_size, bit_dir, choice.size
+				)
+			};
+
+			if (unset_org_size.size() <= 0) { // wanted size not found
+				continue;
+			}
+
+			seg_placement_gpos = unset_org_size[0];
+
+		} else if (choice.placement == Placement::START) {
 			if (choice.anchor_dir == Direction::DOWN) {
 				seg_placement_gpos.y += g_size.y - choice.size.y;
 			}
@@ -965,13 +1020,20 @@ void Region::fill_internal(
 				seg_placement_gpos.x += g_size.x - choice.size.x;
 			}
 		}
+		try_place_internal(choice, w_internal_gpos + seg_placement_gpos, pcg, rng);
+	}
+}
 
-		pcg->generative_occupancy->
-
-		if (choice.type == InternalEntry::TYPE_CALLABLE) {
-			
-			return;
-		}
+void Region::try_place_internal(
+	InternalEntry choice, Vector2i gpos, Ref<PCG> pcg, Ref<RandomNumberGenerator> rng
+) {
+	if (!pcg->generative_occupancy->is_area_free(gpos, choice.size)) {
+		return;
+	}
+	if (choice.type == InternalEntry::TYPE_CALLABLE) {
+		choice.callable.call(gpos);
+	} else {
+		pcg->add_gpos_tile(choice.layer_offset, choice.tile_index, gpos, true, rng);
 	}
 }
 
@@ -1115,24 +1177,23 @@ String Region::get_internal_choices_debug() const {
 	String out{ "" };
 
 	for (uint32_t i{ 0 }; i < internal_choices.size(); ++i) {
-		const Internal &choice_set{ internal_choices[i] };
+		const InternalChoiceSet &choice_sets{ internal_choices[i] };
 
 		out += vformat("choice_set[%d] entries=[", i);
 
-		for (uint32_t j{ 0 }; j < choice_set.entries.size(); ++j) {
-			const InternalEntry &entry{ choice_set.entries[j] };
+		for (uint32_t j{ 0 }; j < choice_sets.choice_set.size(); ++j) {
+			const InternalEntry &entry{ choice_sets.choice_set[j] };
 
 			if (entry.type == InternalEntry::TYPE_CALLABLE) {
-
 				out += vformat(
 					"{callable(%s), size(%s), weight(%d), anchor_dir(%s), placement(%s)}, ",
-					entry.callable, entry.size, entry.weight, entry.anchor_dir, entry.placement
+					entry.callable, entry.size, choice_sets.norm_weights[j], entry.anchor_dir, entry.placement
 				);
 
 			} else {
 				out += vformat(
 					"{tile_index(%s), layer_offset(%s), size(%s), weight(%s), anchor_dir(%s), placement(%s)}, ",
-					entry.tile_index, entry.layer_offset, entry.size, entry.weight, entry.anchor_dir, entry.placement
+					entry.tile_index, entry.layer_offset, entry.size, choice_sets.norm_weights[j], entry.anchor_dir, entry.placement
 				);
 			}
 		}

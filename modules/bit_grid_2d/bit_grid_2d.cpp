@@ -263,6 +263,8 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 }
 
 // CAREFUL: HALF OF THIS IS AI DOGSHIT
+// returns origin, size pairs
+// // // // //
 // origin is top left cell of search size.
 // If wanted_size is left at (0,0), the full histogram is built and the
 // single largest unset rectangle per unbroken run is returned (same
@@ -438,6 +440,93 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 	return result;
 }
 
+// wraps for the anchor dir (e.g. Direction::UP would wrap on the x axis)
+// only finds wanted_size
+// optimize to early exit when wanted size cannot fit
+PackedVector2Array BitGrid2D::find_rand_anchored_unset_area_in_bounds(
+	Ref<RandomNumberGenerator> rng,
+	Vector2i origin,
+	Vector2i search_size,
+	const Direction anchor_dir,
+	Vector2i wanted_size
+) const {
+	if (anchor_dir == Direction::NONE) {
+		int start_cell{ rng->randi_range(0, cell_count - 1) };
+		int end_cell{ start_cell == 0 ? start_cell = cell_count - 1 : start_cell - 1 };
+		int cell{ find_area_in_state(Vector2i(), start_cell, end_cell) };
+		if (cell == -1) {
+			return PackedVector2Array();
+		}
+		return PackedVector2Array{
+			Vector2{ cell % grid_size.x, cell / grid_size.x }, Vector2{ wanted_size }
+		};
+	}
+
+	int axis_idx { 0 };
+	if (anchor_dir == Direction::LEFT || anchor_dir == Direction::RIGHT) {
+		axis_idx = 1;
+	}
+
+	int rand_start_axis_offset{ rng->randi_range(0, search_size[axis_idx] - 1) };
+	int axis_start{ (origin[axis_idx] + rand_start_axis_offset) % grid_size[axis_idx] };
+
+	int first_search_axis_dist{ search_size[axis_idx] - rand_start_axis_offset };
+	int second_search_axis_dist{ rand_start_axis_offset };
+
+	PackedInt32Array search_size_axis{};
+	search_size_axis.resize(3);
+
+	// final ignored in non grid wrapping, swapped if first search wraps grid
+	PackedInt32Array search_origin_axis{axis_start, origin[axis_idx], 0};
+	search_origin_axis.resize(3);
+
+	// does not wrap grid
+	if (axis_start + search_size[axis_idx] <= grid_size[axis_idx]) {
+		search_size_axis.set(0, first_search_axis_dist);
+		search_size_axis.set(1, second_search_axis_dist);
+			
+	// wraps grid on first search, first search always starts at random start
+	} else if (axis_start + first_search_axis_dist > grid_size[axis_idx]) {
+		int edge_dist{ grid_size[axis_idx] - axis_start };
+		search_size_axis.set(0, edge_dist);
+		search_size_axis.set(1, first_search_axis_dist - edge_dist);
+		search_size_axis.set(2, second_search_axis_dist);
+
+		search_origin_axis.set(1, 0);
+		search_origin_axis.set(2, origin[axis_idx]);
+
+	// wraps grid on second search, second search always starts at origin
+	} else if (origin[axis_idx] + second_search_axis_dist > grid_size[axis_idx]) {
+		search_size_axis.set(0, first_search_axis_dist);
+		int edge_dist{ grid_size[axis_idx] - origin[axis_idx] };
+		search_size_axis.set(1, edge_dist);
+		search_size_axis.set(2, second_search_axis_dist - edge_dist);
+	}
+
+	for (int i{ 0 }; i < search_size_axis.size(); ++i) {
+		if (search_size_axis[i] == 0) {
+			break;
+		}
+
+		Vector2i offset_origin{ origin };
+		offset_origin[axis_idx] = search_origin_axis[i];
+
+		Vector2i offset_size{ search_size };
+		offset_size[axis_idx] = search_size_axis[i];
+
+		// should basically never be full so its not worth returning more than the result to check this
+		PackedVector2Array org_size{
+			find_anchored_unset_areas_in_bounds(offset_origin, offset_size, anchor_dir, wanted_size)
+		};
+
+		if (org_size.size() == 2) {
+			return org_size;
+		}
+	}
+
+	return PackedVector2Array();
+}
+
 int BitGrid2D::find_cell_in_state(
 	int end_cell_inc, int start_cell, bool get_unset
 ) const {
@@ -522,7 +611,7 @@ int BitGrid2D::find_cell_in_state(
 
 int BitGrid2D::find_area_in_state(
 	Vector2i size, int start_cell, int end_cell_inc, bool get_unset
-) {
+) const {
 	ERR_FAIL_COND_V_MSG(
 		size.x <= 0 || size.y <= 0, -1,
 		"area of size provided is smaller or equal to zero"

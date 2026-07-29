@@ -191,6 +191,10 @@ private:
 		Ref<PCG> pcg
 	);
 
+	void try_place_internal(
+		InternalEntry choice, Vector2i gpos, Ref<PCG> pcg, Ref<RandomNumberGenerator> rng
+	);
+
 protected:
 	static void _bind_methods();
 

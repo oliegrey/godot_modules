@@ -53,13 +53,21 @@ public:
 		Vector2i wanted_size = Vector2i(0, 0)
 	) const;
 
+	PackedVector2Array find_rand_anchored_unset_area_in_bounds(
+		Ref<RandomNumberGenerator> rng,
+		Vector2i origin,
+		Vector2i search_size,
+		const Direction anchor_dir,
+		Vector2i wanted_size
+	) const;
+
 	int find_cell_in_state(
 		int end_cell_inc, int start_cell = 0, bool get_unset = true
 	) const;
 
 	int find_area_in_state(
 		Vector2i size, int start_cell, int end_cell, bool get_unset = true
-	);
+	) const;
 
 	Vector2i find_rand_gpos_in_state(
 		Ref<RandomNumberGenerator> rng,
