@@ -254,6 +254,7 @@ void PCG::add_cell_i(
 	if (!m_is_server) { add_drawn_index(layer_cell_i, seg_gpos); }
 }
 
+// agnostic to whether tile is occupied
 void PCG::add_gpos_tile(
 	int layer_offset,
 	int tile_i,

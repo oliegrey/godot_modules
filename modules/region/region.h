@@ -26,14 +26,12 @@ public:
 		int32_t layer_offset = -1;
 
 		Vector2i size;
-		int32_t weight;
 		int32_t anchor_dir;
 		int32_t placement;
 
 		static InternalEntry make_callable(
 			const Callable &p_callable,
 			const Vector2i p_size,
-			const int32_t p_weight,
 			const int32_t p_anchor_dir,
 			const int32_t p_placement
 		) {
@@ -41,7 +39,6 @@ public:
 			e.type = TYPE_CALLABLE;
 			e.callable = p_callable;
 			e.size = p_size;
-			e.weight = p_weight;
 			e.anchor_dir = p_anchor_dir;
 			e.placement = p_placement;
 			return e;
@@ -51,7 +48,6 @@ public:
 			const int32_t p_tile_index,
 			const int32_t p_layer_offset,
 			const Vector2i p_size,
-			const int32_t p_weight,
 			const int32_t p_anchor_dir,
 			const int32_t p_placement
 		) {
@@ -60,14 +56,16 @@ public:
 			e.tile_index = p_tile_index;
 			e.layer_offset = p_layer_offset;
 			e.size = p_size;
-			e.weight = p_weight;
 			e.anchor_dir = p_anchor_dir;
 			e.placement = p_placement;
 			return e;
 		}
 	};
 
-	struct Internal { LocalVector<InternalEntry> entries; };
+	struct InternalChoiceSet {
+		LocalVector<InternalEntry> choice_set;
+		PackedFloat32Array norm_weights;
+	};
 
 	enum Slot { PRIMARY, SECONDARY };
 	enum Direction {
@@ -125,7 +123,7 @@ public:
 	int threshold;
 	Vector2i g_size_inclusive; // includes stone sides
 
-	LocalVector<Internal> internal_choices;
+	LocalVector<InternalChoiceSet> internal_choices;
 
 private:
 	static Direction invert_direction(Direction direction) {
@@ -185,6 +183,12 @@ private:
 
 	void fill_blocked_edges(
 		Vector2i internal_gpos, Ref<RandomNumberGenerator> rng, Ref<PCG> pcg
+	);
+
+	void fill_internal(
+		Vector2i internal_gpos,
+		Ref<RandomNumberGenerator> rng,
+		Ref<PCG> pcg
 	);
 
 protected:

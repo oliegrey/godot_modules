@@ -257,7 +257,19 @@ Ref<Region> Region::create(
 		);
 		
 		Array choices{ internal_class_or_tile_choices[i] };
-		region->internal_choices[i].entries.resize(choices.size());
+		region->internal_choices[i].choice_set.resize(choices.size());
+
+		float total_weight{ 0 };
+		const PackedInt32Array &weights{ internal_weights[i] };
+		for (int weight : weights) {
+			total_weight += static_cast<float>(weight);
+		}
+
+		PackedFloat32Array *n_weights{ &region->internal_choices[i].norm_weights };
+		n_weights->resize(internal_weights.size());
+		for (int j{ 0 }; j < n_weights->size(); ++j) {
+			n_weights->set(j, weights[j] / total_weight);
+		}
 
 		for (int j{ 0 }; j < choices.size(); ++j) {
 			Variant variant{ choices[j] };
@@ -291,11 +303,10 @@ Ref<Region> Region::create(
 					vformat("g_size area is <= 0 in entry %d of %s", j, _name)
 				);
 
-				region->internal_choices[i].entries[j] = (
+				region->internal_choices[i].choice_set[j] = (
 					InternalEntry::make_callable(
 						callable,
 						g_size,
-						internal_weight.get(j),
 						internal_anchor_dir.get(j),
 						internal_placement.get(j)
 					)
@@ -309,12 +320,11 @@ Ref<Region> Region::create(
 					vformat("not valid tile enum or dictionary for entry %d of %s", j, _name)
 				);
 
-				region->internal_choices[i].entries[j] = (
+				region->internal_choices[i].choice_set[j] = (
 					InternalEntry::make_tile_ref(
 						tile->tile,
 						tile->layer * m_seg_cell_count,
 						tile->g_size,
-						internal_weight.get(j),
 						internal_anchor_dir.get(j),
 						internal_placement.get(j)
 					)
@@ -902,9 +912,6 @@ void Region::add_region(
 		debug_region(gpos, this, w_seg);
 	}
 
-	const PackedInt32Array LAYER_OFFSETS{ 0 };
-	const PackedInt32Array TILE_INDEXES{ 0 };
-
 	Vector2i internal_gpos{ gpos };
 	if (blocked_sides.has(Direction::UP)) {
 		internal_gpos.y += 1;
@@ -915,9 +922,57 @@ void Region::add_region(
 	
 	fill_blocked_edges(internal_gpos, rng, pcg);
 
-	pcg->add_tiles_rect(LAYER_OFFSETS, TILE_INDEXES, internal_gpos, g_size, true);
+	pcg->add_tile_rect(
+		Tile::DUG * m_seg_cell_count, Tile::DUG, internal_gpos, g_size, false, rng
+	);
 
 	add_free_edge_gpos(gpos, dir_to_free_edge_gpos);
+}
+
+void Region::fill_internal(
+	Vector2i internal_gpos,
+	Ref<RandomNumberGenerator> rng,
+	Ref<PCG> pcg
+) {
+	//Type type;
+	//Callable callable;
+	//int32_t tile_index = -1;
+	//int32_t layer_offset = -1;
+
+	//Vector2i size;
+	//int32_t weight;
+	//int32_t anchor_dir;
+	//int32_t placement;
+
+	for (InternalChoiceSet choice_sets : internal_choices) {
+
+		uint32_t rand_f{ rng->randf() };
+		int choice_i{ 0 };
+		for (; choice_i < choice_sets.norm_weights.size(); ++choice_i) {
+			if (choice_sets.norm_weights[choice_i] >= rand_f) {
+				break;
+			}
+		}
+
+		InternalEntry choice{ choice_sets.choice_set[choice_i] };
+		Vector2i seg_placement_gpos{ 0, 0 };
+
+		if (choice.placement == Placement::START) {
+			if (choice.anchor_dir == Direction::DOWN) {
+				seg_placement_gpos.y += g_size.y - choice.size.y;
+			}
+			else if (choice.anchor_dir == Direction::LEFT) {
+				seg_placement_gpos.x += g_size.x - choice.size.x;
+			}
+		}
+
+		pcg->generative_occupancy->
+
+		if (choice.type == InternalEntry::TYPE_CALLABLE) {
+			
+			return;
+		}
+	}
 }
 
 void Region::fill_blocked_edges(
@@ -1027,7 +1082,7 @@ void Region::fill_blocked_rect(
 	}
 	const int offset{ Tile::Layer::COLLISION * m_seg_cell_count };
 
-	pcg->add_tile_rect(offset, tile_i, gpos, rect);
+	pcg->add_tile_rect(offset, tile_i, gpos, rect, true, rng);
 }
 
 void Region::debug_region(Vector2i gpos, Ref<Region> region, int w_seg) {
