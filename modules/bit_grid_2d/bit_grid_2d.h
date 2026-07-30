@@ -20,7 +20,7 @@ private:
 private:
 	int gpos_to_cell_i(const Vector2i gpos) const;
 
-	int find_is_area_state(int start_cell_i, Vector2i size, bool get_unset) const;
+	int is_area_state(int start_cell_i, Vector2i size, bool get_unset) const;
 
 protected:
 	static void _bind_methods();
@@ -65,7 +65,7 @@ public:
 		int end_cell_inc, int start_cell = 0, bool get_unset = true
 	) const;
 
-	int find_area_in_state(
+	int find_area_in_grid(
 		Vector2i size, int start_cell, int end_cell, bool get_unset = true
 	) const;
 
@@ -82,6 +82,20 @@ public:
 		Vector2i size = Vector2i(1, 1),
 		bool get_unset = true
 	);
+
+	int find_rand_area_in_area(
+		Ref<RandomNumberGenerator> rng,
+		Vector2i origin,
+		Vector2i wanted_size,
+		Vector2i search_size
+	) const;
+
+	int find_area_in_area(
+		Vector2i origin,
+		Vector2i wanted_size,
+		Vector2i search_size,
+		Vector2i search_start_gpos = Vector2i(-1, -1)
+	) const;
 };
 
 VARIANT_ENUM_CAST(BitGrid2D::Direction);

@@ -244,6 +244,8 @@ Ref<Region> Region::create(
 	int64_t choice_sets_size{ internal_class_or_tile_choices.size() };
 	region->internal_choices.resize(choice_sets_size);
 
+	WARN_PRINT(vformat("internal_choices.size() on setup == %s", region->internal_choices.size()));
+
 	for (int i{ 0 }; i < internal_class_or_tile_choices.size(); ++i) {
 		const PackedInt32Array &internal_weight     = internal_weights[i];
 		const PackedInt32Array &internal_anchor_dir = internal_anchor_dirs[i];
@@ -260,16 +262,17 @@ Ref<Region> Region::create(
 		region->internal_choices[i].choice_set.resize(choices.size());
 
 		float total_weight{ 0 };
-		const PackedInt32Array &weights{ internal_weights[i] };
-		for (int weight : weights) {
+		ERR_FAIL_COND_V_MSG(internal_weight.size() <= 0, Ref<Region>(), "no weights provided");
+		for (int weight : internal_weight) {
+			ERR_FAIL_COND_V_MSG(weight <= 0, Ref<Region>(), "weights must be > 0"); 
 			total_weight += static_cast<float>(weight);
 		}
 
 		PackedFloat32Array *n_weights{ &region->internal_choices[i].norm_weights };
-		n_weights->resize(weights.size());
+		n_weights->resize(internal_weight.size());
 		float cum_weight{ 0.0 }; 
 		for (int j{ 0 }; j < n_weights->size(); ++j) {
-			cum_weight += weights[j] / total_weight;
+			cum_weight += internal_weight[j] / total_weight;
 			n_weights->set(j, cum_weight);
 		}
 
@@ -324,6 +327,9 @@ Ref<Region> Region::create(
 				ERR_FAIL_NULL_V_MSG(
 					tile, Ref<Region>(),
 					vformat("not valid tile enum or dictionary for entry %d of %s", j, _name)
+				);
+				ERR_FAIL_COND_V_MSG(
+					tile->g_size.x <= 0 && tile->g_size.y <= 0, Ref<Region>(), "tile area is zero"
 				);
 
 				region->internal_choices[i].choice_set[j] = (
@@ -546,7 +552,7 @@ void Region::generate_zone(
 	// find a free area that will fit the region, starting the search at a random offset
 	int rand_cell_i{ rng->randi_range(0, m_seg_cell_count - 1) };
 	const Vector2i p_g_size{ p_region->g_size_inclusive };
-	const int p_cell_i{ gen_occupancy->find_area_in_state(p_g_size, rand_cell_i, rand_cell_i - 1) };
+	const int p_cell_i{ gen_occupancy->find_area_in_grid(p_g_size, rand_cell_i, rand_cell_i - 1) };
 	ERR_FAIL_COND(p_cell_i == -1);
 	auto p_gpos{ Vector2i(p_cell_i % m_seg_g_size.x, p_cell_i / m_seg_g_size.x) };
 
@@ -944,7 +950,10 @@ void Region::fill_internal(
 	Ref<RandomNumberGenerator> rng,
 	Ref<PCG> pcg
 ) {
-	for (InternalChoiceSet choice_sets : internal_choices) {
+	int i{ 0 };
+
+	for (; i < internal_choices.size(); ++i) {
+		const InternalChoiceSet &choice_sets{ internal_choices[i] };
 
 		// weighted random choice
 		float rand_f{ rng->randf() };
@@ -960,7 +969,7 @@ void Region::fill_internal(
 		InternalEntry choice{ choice_sets.choice_set[choice_i] };
 
 		if (choice.placement == Placement::FILL) {
-			Vector2i limit{ m_seg_g_size - choice.size };
+			Vector2i limit{ g_size - choice.size + Vector2i(1, 1) };
 
 			for (int x{ 0 }; x < limit.x; x += choice.size.x) {
 				for (int y{ 0 }; y < limit.y; y += choice.size.y) {
@@ -973,7 +982,17 @@ void Region::fill_internal(
 
 		Vector2i seg_placement_gpos{ 0, 0 };
 		if (choice.placement == Placement::CENTER) {
-			seg_placement_gpos = g_size / 2 - choice.size / 2;
+			if (choice.anchor_dir == Direction::NONE) {
+				seg_placement_gpos = g_size / 2 - choice.size / 2;
+			} else if (choice.anchor_dir == Direction::UP) {
+				seg_placement_gpos = Vector2i(g_size.x / 2, 0);
+			} else if (choice.anchor_dir == Direction::DOWN) {
+				seg_placement_gpos = Vector2i(g_size.x / 2, g_size.y - choice.size.y);
+			} else if (choice.anchor_dir == Direction::LEFT) {
+				seg_placement_gpos = Vector2i(0, g_size.y / 2);
+			} else if (choice.anchor_dir == Direction::RIGHT) {
+				seg_placement_gpos = Vector2i(g_size.x - choice.size.x, g_size.y / 2);
+			}
 
 		} else if (choice.placement == Placement::END) {
 			if (choice.anchor_dir == Direction::UP) {
@@ -998,6 +1017,7 @@ void Region::fill_internal(
 			} else if (choice.anchor_dir == Direction::RIGHT) {
 				search_size.x = choice.size.x;
 				origin.x += g_size.x - choice.size.x;
+			}
 
 			BitGrid2D::Direction bit_dir{ static_cast<BitGrid2D::Direction>(choice.anchor_dir) };
 			PackedVector2Array unset_org_size{
@@ -1010,7 +1030,14 @@ void Region::fill_internal(
 				continue;
 			}
 
-			seg_placement_gpos = unset_org_size[0];
+			if (choice.type == InternalEntry::TYPE_CALLABLE) {
+				choice.callable.call(unset_org_size[0]);
+			} else {
+				pcg->add_gpos_tile(
+					choice.layer_offset, choice.tile_index, unset_org_size[0], true, rng
+				);
+			}
+			continue;
 
 		} else if (choice.placement == Placement::START) {
 			if (choice.anchor_dir == Direction::DOWN) {
@@ -1023,6 +1050,7 @@ void Region::fill_internal(
 		try_place_internal(choice, w_internal_gpos + seg_placement_gpos, pcg, rng);
 	}
 }
+
 
 void Region::try_place_internal(
 	InternalEntry choice, Vector2i gpos, Ref<PCG> pcg, Ref<RandomNumberGenerator> rng
@@ -1198,8 +1226,10 @@ String Region::get_internal_choices_debug() const {
 			}
 		}
 
-		out += "]\n";
+		out += "]\t";
 	}
+
+	out += vformat("internal_choices.size() == %d", internal_choices.size());
 
 	return out;
 }

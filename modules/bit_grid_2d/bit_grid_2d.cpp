@@ -72,13 +72,13 @@ void BitGrid2D::_bind_methods() {
 
 	ClassDB::bind_method(
 		D_METHOD(
-			"find_area_in_state",
+			"find_area_in_grid",
 			"size",
 			"start_cell",
 			"end_cell_inc",
 			"get_unset"
 		),
-		&BitGrid2D::find_area_in_state,
+		&BitGrid2D::find_area_in_grid,
 		DEFVAL(true)
 	);
 	ClassDB::bind_method(
@@ -117,6 +117,29 @@ void BitGrid2D::_bind_methods() {
 		DEFVAL(Vector2i()),
 		DEFVAL(Vector2i(1, 1)),
 		DEFVAL(true)
+	);
+
+	ClassDB::bind_method(
+		D_METHOD(
+			"find_rand_area_in_area",
+			"rng",
+			"origin",
+			"wanted_size",
+			"search_size"
+		),
+		&BitGrid2D::find_rand_area_in_area
+	);
+
+	ClassDB::bind_method(
+		D_METHOD(
+			"find_area_in_area",
+			"origin",
+			"wanted_size",
+			"search_size",
+			"search_start_gpos"
+		),
+		&BitGrid2D::find_area_in_area,
+		DEFVAL(Vector2i(-1, -1))
 	);
 	
 	ClassDB::bind_method(
@@ -262,7 +285,7 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 	return true;
 }
 
-// CAREFUL: HALF OF THIS IS AI DOGSHIT
+// CAREFUL: HALF OF THIS FUNCTION IS AI DOGSHIT
 // returns origin, size pairs
 // // // // //
 // origin is top left cell of search size.
@@ -440,6 +463,69 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 	return result;
 }
 
+int BitGrid2D::find_rand_area_in_area(
+	Ref<RandomNumberGenerator> rng,
+	Vector2i origin,
+	Vector2i wanted_size,
+	Vector2i search_size
+) const {
+	Vector2i rand_search_area_gpos {
+		rng->randi_range(0, search_size.x - 1),
+		rng->randi_range(0, search_size.y - 1)
+	};
+	Vector2i rand_search_gpos{ origin + rand_search_area_gpos };
+	return find_area_in_area(origin, wanted_size, search_size, rand_search_gpos);
+}
+
+int BitGrid2D::find_area_in_area(
+	Vector2i origin,
+	Vector2i wanted_size,
+	Vector2i search_size,
+	Vector2i search_start_gpos
+) const {
+	ERR_FAIL_COND_V_MSG(
+		search_size.x < wanted_size.x || search_size.y < wanted_size.y, -1,
+		vformat(
+			"search_size(%s) not large enough to accommodate wanted_size(%s)",
+			search_size, wanted_size
+		)
+	);
+	
+	if (search_start_gpos == Vector2i(-1, -1)) {
+		search_start_gpos = origin;
+	}
+	// start x search - from the random x position to the end of the row
+	const int rand_start_cell{ search_start_gpos.x + search_start_gpos.y * grid_size.x };
+	const int end_row_dist{ grid_size.x - search_start_gpos.x };
+	const int first_row_end_cell{ rand_start_cell + end_row_dist };
+	int cell{ find_area_in_grid(wanted_size, rand_start_cell, first_row_end_cell) };
+	if (cell != -1) { return cell; }
+
+	// start y search - from the random y to the end of the search_size.y
+	int row_search_bounds{ origin.y + search_size.y - wanted_size.y };
+
+	for (int y{ search_start_gpos.y + 1 }; y < row_search_bounds; ++y) {
+		int start_cell{ y * grid_size.x + origin.x };
+		int end_cell{ start_cell + search_size.x };
+		cell = find_area_in_grid(wanted_size, start_cell, end_cell);
+		if (cell != -1) { return cell; }
+	}
+
+	// end y search - from the start of the search_size.y to the random y
+	for (int y{ origin.y }; y < search_start_gpos.y; ++y) {
+		int start_cell{ y * grid_size.x + origin.x };
+		int end_cell{ start_cell + search_size.x };
+		cell = find_area_in_grid(wanted_size, start_cell, end_cell);
+		if (cell != -1) { return cell; }
+	}
+
+	// remaining x search - from the start of the row to the random x position
+	const int rand_start_row_cell{ search_start_gpos.y * grid_size.x + origin.x };
+	const int last_row_end_cell{ rand_start_row_cell + search_start_gpos.x };
+	cell = find_area_in_grid(wanted_size, rand_start_cell, last_row_end_cell);
+	return cell;
+}
+
 // wraps for the anchor dir (e.g. Direction::UP would wrap on the x axis)
 // only finds wanted_size
 // optimize to early exit when wanted size cannot fit
@@ -450,15 +536,18 @@ PackedVector2Array BitGrid2D::find_rand_anchored_unset_area_in_bounds(
 	const Direction anchor_dir,
 	Vector2i wanted_size
 ) const {
+
 	if (anchor_dir == Direction::NONE) {
-		int start_cell{ rng->randi_range(0, cell_count - 1) };
-		int end_cell{ start_cell == 0 ? start_cell = cell_count - 1 : start_cell - 1 };
-		int cell{ find_area_in_state(Vector2i(), start_cell, end_cell) };
-		if (cell == -1) {
+		int free_area_cell{ find_rand_area_in_area(rng, origin, wanted_size, search_size) };
+		if (free_area_cell == -1) {
 			return PackedVector2Array();
 		}
 		return PackedVector2Array{
-			Vector2{ cell % grid_size.x, cell / grid_size.x }, Vector2{ wanted_size }
+			Vector2{
+				static_cast<real_t>(free_area_cell % grid_size.x),
+				static_cast<real_t>(free_area_cell / grid_size.x)
+			},
+			Vector2{ static_cast<Vector2>(wanted_size) }
 		};
 	}
 
@@ -609,7 +698,7 @@ int BitGrid2D::find_cell_in_state(
 	return -1;
 }
 
-int BitGrid2D::find_area_in_state(
+int BitGrid2D::find_area_in_grid(
 	Vector2i size, int start_cell, int end_cell_inc, bool get_unset
 ) const {
 	ERR_FAIL_COND_V_MSG(
@@ -626,12 +715,8 @@ int BitGrid2D::find_area_in_state(
 
 	int cell_i{ start_cell };
 
+	// + cell_count guards against negative values
 	const int cell_dist{ (end_cell_inc - start_cell + cell_count) % cell_count };
-
-	ERR_FAIL_COND_V_MSG(
-		size.x + size.y * grid_size.x > cell_dist, -1,
-		"cell range not large enough to accommodate size"
-	);
 
 	int i{ 0 };
 
@@ -641,11 +726,11 @@ int BitGrid2D::find_area_in_state(
 
 		if (cell_i == -1) { return -1; } // no possible areas left
 
-		int x{ find_is_area_state(cell_i, size, get_unset) };
+		int cell_advancement{ is_area_state(cell_i, size, get_unset) };
 
-		if (x == -1) { return cell_i; } // area found
+		if (cell_advancement == -1) { return cell_i; } // area found
 
-		i += x;
+		i += cell_advancement;
 
 		cell_i = (start_cell + i) % cell_count;
 	}
@@ -653,17 +738,16 @@ int BitGrid2D::find_area_in_state(
 	return -1;
 }
 
-int BitGrid2D::find_is_area_state(
-	int start_cell_i, Vector2i size, bool get_unset
-) const {
+int BitGrid2D::is_area_state(int start_cell_i, Vector2i size, bool get_unset) const {
 	const int start_x{ start_cell_i % grid_size.x };
 	const int start_y{ start_cell_i / grid_size.x };
 
-	if (
-		start_x + size.x > grid_size.x ||
-		start_y + size.y > grid_size.y
-	) { // prevent area drawing in a wrapped fashion
-		return 1; // advance caller by 1 cell
+	// guard against going out of bounds and advance to get back in bounds
+	if (start_x + size.x > grid_size.x) {
+		return size.x;
+	}
+	else if (start_y + size.y > grid_size.y) {
+		return size.y * grid_size.x;
 	}
 
 	int max_x{ 1 };
@@ -695,7 +779,7 @@ Vector2i BitGrid2D::find_rand_gpos_in_state(
 	if (required_size == Vector2i(1, 1)) {
 		cell_i = find_cell_in_state(cell_end_inc, cell_start, get_unset);
 	} else {
-		cell_i = find_area_in_state(required_size, cell_start, cell_end_inc, get_unset);
+		cell_i = find_area_in_grid(required_size, cell_start, cell_end_inc, get_unset);
 	}
 
 	if (cell_i == -1) { return Vector2i(-9999, -9999); }
@@ -740,7 +824,7 @@ Vector2i BitGrid2D::find_rand_gpos_ranged_in_state(
 		};
 	} else {
 		search = [&](int start, int end_inc) {
-			return find_area_in_state(size, start, end_inc, get_unset);
+			return find_area_in_grid(size, start, end_inc, get_unset);
 		};
 	}
 
