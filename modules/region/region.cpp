@@ -952,9 +952,7 @@ void Region::fill_internal(
 ) {
 	int i{ 0 };
 
-	for (; i < internal_choices.size(); ++i) {
-		const InternalChoiceSet &choice_sets{ internal_choices[i] };
-
+	for (const InternalChoiceSet &choice_sets : internal_choices) {
 		// weighted random choice
 		float rand_f{ rng->randf() };
 		int choice_i{ 0 };

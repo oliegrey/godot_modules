@@ -54,31 +54,32 @@ public:
 		GRASS = 14,
 		STALACTITE = 15,
 		STALAGMITE = 16,
+		TEST = 17,
     };
     enum Foreground {
-		FOREGROUND_SIGNPOST = 17,
+		FOREGROUND_SIGNPOST = 18,
     };
     enum Interactable {
-		AGRENIC = 18,
-		CRYSTAL = 19,
-		MEGAMOREL = 20,
-		SIGNPOST = 21,
+		AGRENIC = 19,
+		CRYSTAL = 20,
+		MEGAMOREL = 21,
+		SIGNPOST = 22,
     };
     enum Mineable {
-		AZUREEL = 22,
-		COAL = 23,
-		GOLD = 24,
-		ILLEGIBLE_PARCHMENT = 25,
-		IMALADITE = 26,
-		IRON = 27,
-		NULLSCRAP = 28,
-		SALT = 29,
-		SILVER = 30,
-		SKELETON = 31,
-		STRANGE_COINS = 32,
+		AZUREEL = 23,
+		COAL = 24,
+		GOLD = 25,
+		ILLEGIBLE_PARCHMENT = 26,
+		IMALADITE = 27,
+		IRON = 28,
+		NULLSCRAP = 29,
+		SALT = 30,
+		SILVER = 31,
+		SKELETON = 32,
+		STRANGE_COINS = 33,
     };
 
-    inline static constexpr int MAX_TILE{33};
+    inline static constexpr int MAX_TILE{34};
     
     Tile() {}
     Tile(
