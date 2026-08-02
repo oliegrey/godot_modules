@@ -946,9 +946,7 @@ void Region::add_region(
 }
 
 void Region::fill_internal(
-	Vector2i w_internal_gpos,
-	Ref<RandomNumberGenerator> rng,
-	Ref<PCG> pcg
+	Vector2i w_internal_gpos, Ref<RandomNumberGenerator> rng, Ref<PCG> pcg
 ) {
 	int i{ 0 };
 
@@ -968,6 +966,11 @@ void Region::fill_internal(
 
 		if (choice.placement == Placement::FILL) {
 			Vector2i limit{ g_size - choice.size + Vector2i(1, 1) };
+			if (choice.anchor_dir == Direction::UP || choice.anchor_dir == Direction::DOWN) {
+				limit.y = 1;
+			} else if (choice.anchor_dir == Direction::LEFT || choice.anchor_dir == Direction::RIGHT) {
+				limit.x = 1;
+			}
 
 			for (int x{ 0 }; x < limit.x; x += choice.size.x) {
 				for (int y{ 0 }; y < limit.y; y += choice.size.y) {
@@ -1002,37 +1005,23 @@ void Region::fill_internal(
 			}
 
 		} else if (choice.placement == Placement::RANDOM) {
-			Vector2i origin{ w_internal_gpos };
-			Vector2i search_size{ g_size };
-
-			if (choice.anchor_dir == Direction::UP) {
-				search_size.y = choice.size.y;
-			} else if (choice.anchor_dir == Direction::DOWN) {
-				search_size.y = choice.size.y;
-				origin.y += g_size.y - choice.size.y;
-			} else if (choice.anchor_dir == Direction::LEFT) {
-				search_size.x = choice.size.x;
-			} else if (choice.anchor_dir == Direction::RIGHT) {
-				search_size.x = choice.size.x;
-				origin.x += g_size.x - choice.size.x;
-			}
 
 			BitGrid2D::Direction bit_dir{ static_cast<BitGrid2D::Direction>(choice.anchor_dir) };
-			PackedVector2Array unset_org_size{
+			Vector2i unset_gpos{
 				pcg->generative_occupancy->find_rand_anchored_unset_area_in_bounds(
-					rng, origin, search_size, bit_dir, choice.size
+					rng, w_internal_gpos, g_size, bit_dir, choice.size
 				)
 			};
 
-			if (unset_org_size.size() <= 0) { // wanted size not found
+			if (unset_gpos == Vector2i(-9999, -9999)) {
 				continue;
 			}
 
 			if (choice.type == InternalEntry::TYPE_CALLABLE) {
-				choice.callable.call(unset_org_size[0]);
+				choice.callable.call(unset_gpos);
 			} else {
 				pcg->add_gpos_tile(
-					choice.layer_offset, choice.tile_index, unset_org_size[0], true, rng
+					choice.layer_offset, choice.tile_index, unset_gpos, true, rng
 				);
 			}
 			continue;

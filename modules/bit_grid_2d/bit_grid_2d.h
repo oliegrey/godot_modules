@@ -53,10 +53,10 @@ public:
 		Vector2i wanted_size = Vector2i(0, 0)
 	) const;
 
-	PackedVector2Array find_rand_anchored_unset_area_in_bounds(
+	Vector2i find_rand_anchored_unset_area_in_bounds(
 		Ref<RandomNumberGenerator> rng,
-		Vector2i origin,
-		Vector2i search_size,
+		Vector2i bounds_origin,
+		Vector2i bounds_size,
 		const Direction anchor_dir,
 		Vector2i wanted_size
 	) const;

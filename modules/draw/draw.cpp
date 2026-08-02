@@ -39,6 +39,8 @@ void Draw::segment(
 	for (int64_t bits : drawn_indexes) {
 
 		const int64_t seg_cell_i{ bits & 0xFFFF };
+		const int64_t layers_i{ seg_cell_i / cell_count };
+		ERR_FAIL_INDEX(layers_i, layers.size());
 		TileMapLayer *layer{ layers[seg_cell_i / cell_count] };
 
 		const int64_t tile_i{ tile_data[seg_cell_i] };

@@ -19,6 +19,7 @@ Tile::Tile(
     state_frame_ranges = p_state_frame_ranges;
     frame_durations_ms = p_frame_durations_ms;
     g_size = Vector2i(p_width, p_height);
+    tile_sizes[p_tile] = g_size;
     linked_foreground_i = p_linked_foreground_enum;
     random_group_length = p_random_group_length;
     random_group_lengths[p_tile] = p_random_group_length;
@@ -105,6 +106,8 @@ void Tile::_bind_methods() {
     
     ClassDB::bind_method(D_METHOD("get_g_size"), &Tile::get_g_size);
     ADD_PROPERTY(PropertyInfo(Variant::VECTOR2I, "g_size"), "", "get_g_size");
+    
+    ClassDB::bind_static_method("Tile", D_METHOD("get_tile_size", "tile_i"), &Tile::get_tile_size);
     
     ClassDB::bind_method(D_METHOD("get_frame_durations_ms"), &Tile::get_frame_durations_ms);
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "frame_durations_ms"), "", "get_frame_durations_ms");
@@ -614,6 +617,10 @@ int Tile::get_variation_i(Ref<RandomNumberGenerator> rng, int tile_i){
     }
     int tile_variation_i { rng->randi_range(tile_i, tile_i + length) };
     return tile_variation_i;
+}
+
+Vector2i Tile::get_tile_size(int tile_i) {
+    return tile_sizes[tile_i];
 }
 
 Ref<Tile> Tile::get_variation(Ref<RandomNumberGenerator> rng){

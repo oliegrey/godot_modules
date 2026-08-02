@@ -18,7 +18,8 @@ private:
 public:
 	Ref<BitGrid2D> generative_occupancy;
 	PackedByteArray tile_data;
-	PackedInt64Array drawn_indexes;
+	PackedByteArray anchor_dist_data; // to find the anchor of larger tiles
+	PackedInt64Array drawn_indexes; // client only
 	int drawn_indexes_i{ 0 };
 	int used_cell_count{ 0 };
 
@@ -31,18 +32,18 @@ private:
 	void add_generative_occupancy(int cell_i);
 	void add_drawn_index(int layer_cell_i, Vector2i seg_gpos);
 
+	uint8_t get_anchor_dist_bits(Vector2i dist) const;
+	void add_anchor_dist(int layer_cell_i, Vector2i dist);
+	int get_anchor_cell(int layer_cell_i) const;
+
 protected:
 	static void _bind_methods();
 
 public:
-	static Ref<PCG> create(
-		Vector2i m_segment_grid_size,
-		int w_seg,
-		int layer_count,
-		bool is_server
-	);
+	static Ref<PCG> create(Vector2i m_segment_grid_size, int w_seg, bool is_server);
 
 	Ref<BitGrid2D> get_generative_occupancy() const;
+	PackedByteArray get_anchor_dist_data() const;
 	const PackedByteArray& get_tile_data() const { return tile_data; }
 	PackedInt64Array get_drawn_indexes() const {
 		return drawn_indexes.slice(0, drawn_indexes_i); // should only be called once or twice per segment on the client, slice copy is fine
@@ -55,7 +56,8 @@ public:
 		int cell_i,
 		int tile_i,
 		Vector2i seg_gpos,
-		bool add_occupancy = true
+		bool add_occupancy,
+		Vector2i anchor_dist
 	);
 
 	void add_gpos_tile(

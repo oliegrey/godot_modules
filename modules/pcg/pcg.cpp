@@ -7,7 +7,7 @@
 void PCG::_bind_methods() {
 	ClassDB::bind_static_method(
 		"PCG",
-		D_METHOD("create", "segment_grid_size", "w_seg", "layer_count", "is_server"),
+		D_METHOD("create", "segment_grid_size", "w_seg", "is_server"),
 		&PCG::create
 	);
 
@@ -17,6 +17,7 @@ void PCG::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_drawn_indexes_i"), &PCG::get_drawn_indexes_i);
 	ClassDB::bind_method(D_METHOD("get_used_cell_count"), &PCG::get_used_cell_count);
 	ClassDB::bind_method(D_METHOD("clear_occupancy"), &PCG::clear_occupancy);
+	ClassDB::bind_method(D_METHOD("get_anchor_dist_data"), &PCG::get_anchor_dist_data);
 
 	ClassDB::bind_method(
 		D_METHOD(
@@ -181,12 +182,7 @@ void PCG::_bind_methods() {
 	);
 }
 
-Ref<PCG> PCG::create(
-	Vector2i segment_grid_size,
-	int w_seg,
-	int layer_count,
-	bool is_server
-) {
+Ref<PCG> PCG::create(Vector2i segment_grid_size, int w_seg, bool is_server) {
 	Ref<PCG> pcg;
 	pcg.instantiate();
 	pcg->m_seg_grid_size = segment_grid_size;
@@ -196,8 +192,11 @@ Ref<PCG> PCG::create(
 
 	pcg->generative_occupancy = BitGrid2D::create(segment_grid_size);
 	int cell_count = segment_grid_size.x * segment_grid_size.y;
+	constexpr int layer_count{ Tile::MAX_LAYER };
 	pcg->tile_data.resize(layer_count * cell_count);
 	pcg->tile_data.fill(255);
+	pcg->anchor_dist_data.resize(layer_count * cell_count);
+	pcg->anchor_dist_data.fill(0);
 	pcg->drawn_indexes.resize(cell_count * layer_count);
 	pcg->drawn_indexes.fill(-1);
 	return pcg;
@@ -205,6 +204,10 @@ Ref<PCG> PCG::create(
 
 Ref<BitGrid2D> PCG::get_generative_occupancy() const {
 	return generative_occupancy;
+}
+
+PackedByteArray PCG::get_anchor_dist_data() const {
+	return anchor_dist_data;
 }
 
 void PCG::clear_occupancy() const {
@@ -228,6 +231,21 @@ void PCG::add_tile_data(int layer_cell_i, int tile_i) {
 	tile_data.set(layer_cell_i, tile_i);
 }
 
+uint8_t PCG::get_anchor_dist_bits(Vector2i dist) const {
+	return dist.x & 0xF | ((dist.y & 0xF) << 4);
+}
+
+void PCG::add_anchor_dist(int layer_cell_i, Vector2i dist) {
+	anchor_dist_data.set(layer_cell_i, get_anchor_dist_bits(dist));
+}
+
+int PCG::get_anchor_cell(int layer_cell_i) const {
+	uint8_t anchor_bits{ anchor_dist_data[layer_cell_i] };
+	Vector2i anchor_dist{ anchor_bits & 0xF, anchor_bits >> 4 & 0xF };
+	layer_cell_i -= anchor_dist.x + anchor_dist.y * m_seg_grid_size.x;
+	return layer_cell_i;
+}
+
 void PCG::add_generative_occupancy(int cell_i) {
 	generative_occupancy->set_cell_i(cell_i);
 	used_cell_count += 1;
@@ -247,11 +265,13 @@ void PCG::add_cell_i(
 	int cell_i,
 	int tile_i,
 	Vector2i seg_gpos,
-	bool add_occupancy
+	bool add_occupancy,
+	Vector2i anchor_dist
 ) {
 	add_tile_data(layer_cell_i, tile_i);
+	add_anchor_dist(layer_cell_i, anchor_dist);
 	if (add_occupancy) { add_generative_occupancy(cell_i); }
-	if (!m_is_server) { add_drawn_index(layer_cell_i, seg_gpos); }
+	if (!m_is_server && anchor_dist == Vector2i(0, 0)) { add_drawn_index(layer_cell_i, seg_gpos); }
 }
 
 // agnostic to whether tile is occupied
@@ -265,8 +285,16 @@ void PCG::add_gpos_tile(
 	if (tile_variation_rng != Ref<RandomNumberGenerator>()) {
 		tile_i = Tile::get_variation_i(tile_variation_rng, tile_i);
 	}
-	int cell_i{ get_cell_i(seg_gpos) };
-	add_cell_i(layer_offset + cell_i, cell_i, tile_i, seg_gpos, add_occupancy);
+	Vector2i tile_g_size{ Tile::get_tile_size(tile_i) };
+	int anchor_cell_i{ get_cell_i(seg_gpos) };
+	for (int y{ 0 }; y < tile_g_size.y; ++y) {
+		for (int x{ 0 }; x < tile_g_size.x; ++x) {
+			Vector2i anchor_dist{ x, y };
+			const int tile_cell{ anchor_cell_i + x + y * m_seg_grid_size.x };
+			const int layer_tile_cell{ layer_offset + tile_cell };
+			add_cell_i(layer_tile_cell, tile_cell, tile_i, seg_gpos, add_occupancy, anchor_dist);
+		}
+	}
 }
 
 void PCG::add_gpos_tiles(
@@ -483,20 +511,31 @@ void PCG::add_rand(
 	bool use_tile_variations
 ) {
 	const bool has_bucket{ advance_bucket != Ref<SubgridProbe>() };
+	int tile_v_i{ tile_i };
+	Vector2i g_size{ Tile::get_tile_size(tile_v_i) };
 
 	for (int i{ 0 }; i < count; ++i) {
-		Vector2i gpos = generative_occupancy->find_rand_gpos_in_state(rng);
+		if (use_tile_variations) {
+			tile_v_i = Tile::get_variation_i(rng, tile_i);
+			g_size = Tile::get_tile_size(tile_v_i);
+		}
+		
+		const int start_cell{ rng->randi_range(0, cell_count - 1) };
+		const int end_cell{ start_cell == 0 ? cell_count - 1 : start_cell - 1 };
+		const int cell{ generative_occupancy->find_area_in_grid(g_size, start_cell, end_cell) };
+		if (cell == -1) {
+			return;
+		}
 
-		if (!generative_occupancy->is_gpos_set(gpos)) {
-			Ref<RandomNumberGenerator> tile_variation_rng{
-				use_tile_variations ? rng : Ref<RandomNumberGenerator>()
-			};
-			
-			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy, tile_variation_rng);
+		Vector2i gpos{ cell % m_seg_grid_size.x, cell / m_seg_grid_size.x };
+		Ref<RandomNumberGenerator> tile_variation_rng{
+			use_tile_variations ? rng : Ref<RandomNumberGenerator>()
+		};
+		
+		add_gpos_tile(layer_offset, tile_v_i, gpos, add_occupancy); // dont pass rng because tile variation already applied
 
-			if (has_bucket) {
-				advance_bucket->advance_gpos_bucketing(gpos);
-			}
+		if (has_bucket) {
+			advance_bucket->advance_gpos_bucketing(gpos);
 		}
 	}
 }

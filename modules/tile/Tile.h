@@ -104,6 +104,7 @@ public:
     inline static const PackedStringArray layer_names{ "background", "collision", "decoration", "foreground", "interactable", "mineable" };
     inline static std::array<HashMap<Vector2i, Ref<Tile>>, MAX_LAYER> atlas_coord_to_tile;
     inline static std::array<int, MAX_TILE> random_group_lengths;
+    inline static std::array<Vector2i, MAX_TILE> tile_sizes;
     
     Layer layer = BACKGROUND;
     int tile = 0;
@@ -124,6 +125,7 @@ public:
     inline static const LocalVector<Ref<Tile>> &get_layer(Layer layer_i);
     inline static TypedArray<Tile> get_layer_tiles(Tile::Layer layer_i);
     static int get_variation_i(Ref<RandomNumberGenerator> rng, int tile_i);
+    static Vector2i get_tile_size(int tile_i);
     
     virtual String to_string() override { 
         return vformat("Tile(tile_name:%s, tile_i:%d)", name, tile); 
