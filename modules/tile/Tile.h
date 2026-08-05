@@ -46,40 +46,44 @@ public:
 		ROCK = 8,
     };
     enum Decoration {
-		CLOUD = 9,
-		CLOUD2 = 10,
-		CLOUD3 = 11,
-		CLOUD4 = 12,
-		CLOUD5 = 13,
-		GRASS = 14,
-		STALACTITE = 15,
-		STALAGMITE = 16,
-		TEST = 17,
+		BUSH = 9,
+		CLOUD = 10,
+		CLOUD2 = 11,
+		CLOUD3 = 12,
+		CLOUD4 = 13,
+		CLOUD5 = 14,
+		FLOORROCK = 15,
+		GRASS = 16,
+		STALACTITE = 17,
+		STALAGMITE = 18,
+		TEST = 19,
     };
     enum Foreground {
-		FOREGROUND_SIGNPOST = 18,
+		FOREGROUND_SIGNPOST = 20,
     };
     enum Interactable {
-		AGRENIC = 19,
-		CRYSTAL = 20,
-		MEGAMOREL = 21,
-		SIGNPOST = 22,
+		AGRENIC = 21,
+		CRYSTAL = 22,
+		EXPLORER = 23,
+		MEGAMOREL = 24,
+		SIGNPOST = 25,
+		TRADER = 26,
     };
     enum Mineable {
-		AZUREEL = 23,
-		COAL = 24,
-		GOLD = 25,
-		ILLEGIBLE_PARCHMENT = 26,
-		IMALADITE = 27,
-		IRON = 28,
-		NULLSCRAP = 29,
-		SALT = 30,
-		SILVER = 31,
-		SKELETON = 32,
-		STRANGE_COINS = 33,
+		AZUREEL = 27,
+		COAL = 28,
+		GOLD = 29,
+		ILLEGIBLE_PARCHMENT = 30,
+		IMALADITE = 31,
+		IRON = 32,
+		NULLSCRAP = 33,
+		SALT = 34,
+		SILVER = 35,
+		SKELETON = 36,
+		STRANGE_COINS = 37,
     };
 
-    inline static constexpr int MAX_TILE{34};
+    inline static constexpr int MAX_TILE{38};
     
     Tile() {}
     Tile(
