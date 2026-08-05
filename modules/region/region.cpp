@@ -51,10 +51,15 @@ void Region::_bind_methods() {
 
 			"internal_callable_or_tile_choices",
 			"internal_weights",
-			"internal_anchor_dir",
-			"internal_placements"
+			"internal_gpos_alignments",
+			"internal_placements",
+
+			"rand_length_addition",
+			"mirror_axes"
 		),
-		&Region::create
+		&Region::create,
+		DEFVAL(Vector2i(0, 0)),
+		DEFVAL(Axis::NO_AXES)
 	);
 
 	ClassDB::bind_static_method("Region", D_METHOD("finalize"), &Region::finalize);
@@ -158,49 +163,40 @@ void Region::_bind_methods() {
 	BIND_ENUM_CONSTANT(START);
 	BIND_ENUM_CONSTANT(END);
 	BIND_ENUM_CONSTANT(FILL);
+	BIND_ENUM_CONSTANT(FORCE_GPOS);
 
 	BIND_ENUM_CONSTANT(DIRT);
 	BIND_ENUM_CONSTANT(STONE);
 	BIND_ENUM_CONSTANT(MIX);
 	BIND_ENUM_CONSTANT(ANY);
 	BIND_ENUM_CONSTANT(ANY_STONE);
+
+	BIND_ENUM_CONSTANT(NO_AXES);
+	BIND_ENUM_CONSTANT(X);
+	BIND_ENUM_CONSTANT(Y);
+	BIND_ENUM_CONSTANT(ALL_AXES);
+
+	ClassDB::bind_static_method("Region", D_METHOD("ALIGN_NONE"), &Region::ALIGN_NONE);
+	ClassDB::bind_static_method("Region", D_METHOD("ALIGN_UP"), &Region::ALIGN_UP);
+	ClassDB::bind_static_method("Region", D_METHOD("ALIGN_DOWN"), &Region::ALIGN_DOWN);
+	ClassDB::bind_static_method("Region", D_METHOD("ALIGN_LEFT"), &Region::ALIGN_LEFT);
+	ClassDB::bind_static_method("Region", D_METHOD("ALIGN_RIGHT"), &Region::ALIGN_RIGHT);
 }
 
-String Region::get_name() const {
-	return name;
-}
-
-Region::Slot Region::get_slot() const {
-	return slot;
-}
-
-Vector2i Region::get_g_size() const {
-	return g_size;
-}
-
-PackedInt32Array Region::get_blocked_sides() const {
-	return blocked_sides;
-}
-
-PackedInt32Array Region::get_joining_sides() const {
-	return joining_sides;
-}
-
-float Region::get_spawn_weight() const {
-	return spawn_weight;
-}
-
-int Region::get_threshold() const {
-	return threshold;
-}
-
-Vector2i Region::get_g_size_inclusive() const {
-	return g_size_inclusive;
-}
-
-PackedInt32Array Region::get_blocked_fill() const {
-	return blocked_fill;
-}
+Vector2i Region::ALIGN_NONE() { return A_NONE; }
+Vector2i Region::ALIGN_UP() { return A_UP; }
+Vector2i Region::ALIGN_DOWN() { return A_DOWN; }
+Vector2i Region::ALIGN_LEFT() { return A_LEFT; }
+Vector2i Region::ALIGN_RIGHT() { return A_RIGHT; }
+String Region::get_name() const { return name; }
+Region::Slot Region::get_slot() const { return slot; }
+Vector2i Region::get_g_size() const { return g_size; }
+PackedInt32Array Region::get_blocked_sides() const { return blocked_sides; }
+PackedInt32Array Region::get_joining_sides() const { return joining_sides; }
+float Region::get_spawn_weight() const { return spawn_weight; }
+int Region::get_threshold() const { return threshold; }
+Vector2i Region::get_g_size_inclusive() const { return g_size_inclusive; }
+PackedInt32Array Region::get_blocked_fill() const { return blocked_fill; }
 
 void Region::initialize(Vector2i seg_g_size, bool debug) {
 	m_seg_g_size = seg_g_size;
@@ -209,6 +205,18 @@ void Region::initialize(Vector2i seg_g_size, bool debug) {
 	init_dominance_mask();
 }
 
+int Region::try_mirror_axis_dir_i(int axis_i, int dir_i) {
+	if (
+		(axis_i == Axis::Y && (dir_i == Direction::UP || dir_i == Direction::DOWN)) ||
+		(axis_i == Axis::X && (dir_i == Direction::LEFT || dir_i == Direction::RIGHT)) ||
+		axis_i == Axis::ALL_AXES
+	) {
+		return invert_direction(static_cast<Direction>(dir_i));
+	}
+	return dir_i;
+}
+
+// returns final mirrored region
 Ref<Region> Region::create(
 	String _name,
 	Slot _slot,
@@ -220,159 +228,199 @@ Ref<Region> Region::create(
 	PackedInt32Array _blocked_fill,
 	PackedInt32Array _joining_sides,
 
-	TypedArray<Array> internal_class_or_tile_choices, // arrays of [callable, tile_i, ...]
+	TypedArray<Array> internal_class_or_tile_choices,
 	TypedArray<PackedInt32Array> internal_weights,
-	TypedArray<PackedInt32Array> internal_anchor_dirs,
-	TypedArray<PackedInt32Array> internal_placements
+	TypedArray<PackedVector2Array> internal_gpos_alignments,
+	TypedArray<PackedInt32Array> internal_placements,
+
+	Vector2i _rand_length_addition,
+	Axis mirror_axes
 ) {
-	ERR_FAIL_COND_V_MSG(
-		internal_class_or_tile_choices.size() != internal_weights.size() ||
-		internal_class_or_tile_choices.size() != internal_anchor_dirs.size() ||
-		internal_class_or_tile_choices.size() != internal_placements.size(),
-		Ref<Region>(), "choices, weights, anchor_dirs and placements must be of equal length"
-	);
-	
 	Ref<Region> region;
-	region.instantiate();
-	region->name          = _name;
-	region->slot          = _slot;
-	region->g_size        = _g_size;
-	region->blocked_sides = _blocked_sides;
-	region->blocked_fill  = _blocked_fill;
-	region->joining_sides = _joining_sides;
-	
-	int64_t choice_sets_size{ internal_class_or_tile_choices.size() };
-	region->internal_choices.resize(choice_sets_size);
 
-	WARN_PRINT(vformat("internal_choices.size() on setup == %s", region->internal_choices.size()));
+	PackedInt32Array all_mirror_axes;
+	if (mirror_axes == Axis::NO_AXES) {
+		all_mirror_axes = PackedInt32Array{ mirror_axes };
+	}
+	else if (mirror_axes == Axis::X || mirror_axes == Axis::Y) {
+		all_mirror_axes = PackedInt32Array{ Axis::NO_AXES, mirror_axes };
+	}
+	else {
+		all_mirror_axes = PackedInt32Array{ Axis::NO_AXES, Axis::X, Axis::Y, mirror_axes };
+	}
 
-	for (int i{ 0 }; i < internal_class_or_tile_choices.size(); ++i) {
-		const PackedInt32Array &internal_weight     = internal_weights[i];
-		const PackedInt32Array &internal_anchor_dir = internal_anchor_dirs[i];
-		const PackedInt32Array &internal_placement  = internal_placements[i];
+	const float mirror_weight{ _spawn_weight / static_cast<float>(all_mirror_axes.size())};
+
+	for (int m_axis : all_mirror_axes) {
+		region.instantiate();
+
+		region->name   = _name + String::num_int64(m_axis);
+		region->slot   = _slot;
+		region->g_size = _g_size;
+
+		for (int dir_i : _blocked_sides) {
+			dir_i = try_mirror_axis_dir_i(mirror_axes, dir_i);
+			region->blocked_sides.push_back(dir_i);
+		}
+		region->blocked_fill  = _blocked_fill;
+		for (int dir_i : _joining_sides) {
+			dir_i = try_mirror_axis_dir_i(mirror_axes, dir_i);
+			region->joining_sides.push_back(dir_i);
+		}
+
+		region->spawn_weight = mirror_weight;
+		region->threshold    = _threshold;
+
+		region->g_size_inclusive = _g_size;
+		for (int dir : region->blocked_sides) {
+			if (dir == Direction::UP || dir == Direction::DOWN) {
+				region->g_size_inclusive.y += 1;
+			} else if (dir == Direction::LEFT || dir == Direction::RIGHT) {
+				region->g_size_inclusive.x += 1;
+			}
+		}
+
+		ERR_FAIL_COND_V_MSG(region->g_size_inclusive.x > 8, Ref<Region>(), "g_size_inclusive.x > 8");
+		ERR_FAIL_COND_V_MSG(region->g_size_inclusive.y > 8, Ref<Region>(), "g_size_inclusive.y > 8");
+
+		if (_slot == Slot::PRIMARY) {
+			m_primary_regions.push_back(region);
+		} else {
+			m_secondary_regions.push_back(region);
+		}
+
+		region->rand_length_addition = _rand_length_addition;
 
 		ERR_FAIL_COND_V_MSG(
-			internal_weight.size() != internal_anchor_dir.size() ||
-			internal_weight.size() != internal_placement.size(),
-			Ref<Region>(),
-			vformat("internal configs are not of the same length for %s", i)
+			internal_class_or_tile_choices.size() != internal_weights.size() ||
+			internal_class_or_tile_choices.size() != internal_gpos_alignments.size() ||
+			internal_class_or_tile_choices.size() != internal_placements.size(),
+			Ref<Region>(), "choices, weights, anchor_dirs and placements must be of equal length"
 		);
-		
-		Array choices{ internal_class_or_tile_choices[i] };
-		region->internal_choices[i].choice_set.resize(choices.size());
+	
+		int64_t choice_sets_size{ internal_class_or_tile_choices.size() };
+		region->internal_choices.resize(choice_sets_size);
 
-		float total_weight{ 0 };
-		ERR_FAIL_COND_V_MSG(internal_weight.size() <= 0, Ref<Region>(), "no weights provided");
-		for (int weight : internal_weight) {
-			ERR_FAIL_COND_V_MSG(weight <= 0, Ref<Region>(), "weights must be > 0"); 
-			total_weight += static_cast<float>(weight);
-		}
+		for (int i{ 0 }; i < internal_class_or_tile_choices.size(); ++i) {
+			Array choices{ internal_class_or_tile_choices[i] };
+			region->internal_choices[i].choice_set.resize(choices.size());
 
-		PackedFloat32Array *n_weights{ &region->internal_choices[i].norm_weights };
-		n_weights->resize(internal_weight.size());
-		float cum_weight{ 0.0 }; 
-		for (int j{ 0 }; j < n_weights->size(); ++j) {
-			cum_weight += internal_weight[j] / total_weight;
-			n_weights->set(j, cum_weight);
-		}
+			PackedFloat32Array *n_weights{ &region->internal_choices[i].norm_weights };
+			PackedInt32Array internal_weight{
+				static_cast<PackedInt32Array>(internal_weights[i])
+			};
 
-		for (int j{ 0 }; j < choices.size(); ++j) {
-			Variant variant{ choices[j] };
+			float total_weight{ 0 };
+			ERR_FAIL_COND_V_MSG(internal_weight.size() <= 0, Ref<Region>(), "no weights provided");
+			for (int weight : internal_weight) {
+				ERR_FAIL_COND_V_MSG(weight <= 0, Ref<Region>(), "weights must be > 0"); 
+				total_weight += static_cast<float>(weight);
+			}
+
+			n_weights->resize(internal_weight.size());
+			float cum_weight{ 0.0 }; 
+			for (int j{ 0 }; j < n_weights->size(); ++j) {
+				cum_weight += internal_weight[j] / total_weight;
+				n_weights->set(j, cum_weight);
+			}
+
+			PackedVector2Array internal_gpos_alignment{
+				static_cast<PackedVector2Array>(internal_gpos_alignments[i])
+			};
+			for (int j{ 0 }; j < internal_gpos_alignment.size(); ++j) {
+				Vector2 gpos_alignment{ internal_gpos_alignment[j] };
+				if (m_axis == Axis::X || m_axis == Axis::ALL_AXES) {
+					gpos_alignment.x *= -1;
+				}
+				if (m_axis == Axis::Y || m_axis == Axis::ALL_AXES) {
+					gpos_alignment.y *= -1;
+				}
+				internal_gpos_alignment.set(j, gpos_alignment);
+			}
+
+			PackedInt32Array internal_placement{
+				static_cast<PackedInt32Array>(internal_placements[i])
+			};
+
 			ERR_FAIL_COND_V_MSG(
-				variant.get_type() == Variant::NIL, Ref<Region>(),
-				vformat("passed value is null for choice %d", j)
+				internal_placement.size() != internal_gpos_alignment.size(), Ref<Region>(),
+				vformat("internal configs are not of the same length for %s", i)
 			);
-			Variant::Type type{ variant.get_type() };
 
-			if (type == Variant::DICTIONARY) {
-				Dictionary dict{ variant };
-
+			for (int j{ 0 }; j < choices.size(); ++j) {
+				Variant variant{ choices[j] };
 				ERR_FAIL_COND_V_MSG(
-					!dict.has("g_size"), Ref<Region>(),
-					vformat("entry %d of %s dictionary missing g_size", j, _name)
+					variant.get_type() == Variant::NIL, Ref<Region>(),
+					vformat("passed value is null for choice %d", j)
 				);
-				ERR_FAIL_COND_V_MSG(
-					!dict.has("callable"), Ref<Region>(),
-					vformat("entry %d of %s dictionary missing callable", j, _name)
-				);
+				Variant::Type type{ variant.get_type() };
 
-				Vector2i callable_g_size{ dict["g_size"] };
-				Callable callable{ dict["callable"] };
+				if (type == Variant::DICTIONARY) {
+					Dictionary dict{ variant };
 
-				ERR_FAIL_COND_V_MSG(
-					!callable.is_valid(), Ref<Region>(),
-					vformat("callable in entry %d of %s is invalid", j, _name)
-				);
-				ERR_FAIL_COND_V_MSG(
-					callable_g_size.x <= 0 || callable_g_size.y <= 0, Ref<Region>(),
-					vformat("callable_g_size area is <= 0 in entry %d of %s", j, _name)
-				);
-				ERR_FAIL_COND_V_MSG(
-					callable_g_size.x > _g_size.x || callable_g_size.y > _g_size.y, Ref<Region>(),
-					vformat("callable_g_size(%s) is larger than region _g_size(%s)", callable_g_size, _g_size)
-				);
+					ERR_FAIL_COND_V_MSG(
+						!dict.has("g_size"), Ref<Region>(),
+						vformat("entry %d of %s dictionary missing g_size", j, _name)
+					);
+					ERR_FAIL_COND_V_MSG(
+						!dict.has("callable"), Ref<Region>(),
+						vformat("entry %d of %s dictionary missing callable", j, _name)
+					);
 
-				region->internal_choices[i].choice_set[j] = (
-					InternalEntry::make_callable(
-						callable,
-						callable_g_size,
-						internal_anchor_dir.get(j),
-						internal_placement.get(j)
-					)
-				);
-			}
+					Vector2i callable_g_size{ dict["g_size"] };
+					Callable callable{ dict["callable"] };
 
-			else if (type == Variant::INT) {
-				Ref<Tile> tile{ Tile::get_tile(variant) };
-				ERR_FAIL_NULL_V_MSG(
-					tile, Ref<Region>(),
-					vformat("not valid tile enum or dictionary for entry %d of %s", j, _name)
-				);
-				ERR_FAIL_COND_V_MSG(
-					tile->g_size.x <= 0 && tile->g_size.y <= 0, Ref<Region>(), "tile area is zero"
-				);
+					ERR_FAIL_COND_V_MSG(
+						!callable.is_valid(), Ref<Region>(),
+						vformat("callable in entry %d of %s is invalid", j, _name)
+					);
+					ERR_FAIL_COND_V_MSG(
+						callable_g_size.x <= 0 || callable_g_size.y <= 0, Ref<Region>(),
+						vformat("callable_g_size area is <= 0 in entry %d of %s", j, _name)
+					);
+					ERR_FAIL_COND_V_MSG(
+						callable_g_size.x > _g_size.x || callable_g_size.y > _g_size.y, Ref<Region>(),
+						vformat("callable_g_size(%s) is larger than region _g_size(%s)", callable_g_size, _g_size)
+					);
 
-				region->internal_choices[i].choice_set[j] = (
-					InternalEntry::make_tile_ref(
-						tile->tile,
-						tile->layer * m_seg_cell_count,
-						tile->g_size,
-						internal_anchor_dir.get(j),
-						internal_placement.get(j)
-					)
-				);
+					region->internal_choices[i].choice_set[j] = (
+						InternalEntry::make_callable(
+							callable,
+							callable_g_size,
+							internal_gpos_alignment.get(j),
+							internal_placement.get(j)
+						)
+					);
+				}
 
-			} else {
-				ERR_FAIL_V_MSG(
-					Ref<Region>(),
-					vformat("incompatible type passed to Region::create for entry %d of %s", j, _name)
-				);
+				else if (type == Variant::INT) {
+					Ref<Tile> tile{ Tile::get_tile(variant) };
+					ERR_FAIL_NULL_V_MSG(
+						tile, Ref<Region>(),
+						vformat("not valid tile enum or dictionary for entry %d of %s", j, _name)
+					);
+					ERR_FAIL_COND_V_MSG(
+						tile->g_size.x <= 0 && tile->g_size.y <= 0, Ref<Region>(), "tile area is zero"
+					);
+
+					region->internal_choices[i].choice_set[j] = (
+						InternalEntry::make_tile_ref(
+							tile->tile,
+							tile->layer * m_seg_cell_count,
+							tile->g_size,
+							internal_gpos_alignment.get(j),
+							internal_placement.get(j)
+						)
+					);
+
+				} else {
+					ERR_FAIL_V_MSG(
+						Ref<Region>(),
+						vformat("incompatible type passed to Region::create for entry %d of %s", j, _name)
+					);
+				}
 			}
 		}
-	}
-
-	region->spawn_weight = _spawn_weight;
-	region->threshold    = _threshold;
-
-	region->g_size_inclusive = _g_size;
-	for (int dir : region->blocked_sides) {
-		if (dir == Direction::UP || dir == Direction::DOWN) {
-			region->g_size_inclusive.y += 1;
-		} else if (dir == Direction::LEFT || dir == Direction::RIGHT) {
-			region->g_size_inclusive.x += 1;
-		}
-	}
-
-	ERR_FAIL_COND_V_MSG(region->g_size_inclusive.x > 8, Ref<Region>(), "g_size_inclusive.x > 8");
-	ERR_FAIL_COND_V_MSG(region->g_size_inclusive.y > 8, Ref<Region>(), "g_size_inclusive.y > 8");
-
-	region->m_cell_count = region->g_size_inclusive.y * region->g_size_inclusive.x;
-
-	if (_slot == Slot::PRIMARY) {
-		m_primary_regions.push_back(region);
-		return region;
-	} else {
-		m_secondary_regions.push_back(region);
 	}
 
 	return region;
@@ -478,9 +526,9 @@ int Region::rand_weighted_bound(
 	return exl_upper_bound - 1;
 }
 
-void Region::add_free_edge_gpos(Vector2i gpos, DirEdge& dir_to_free_edge_gpos) {
-	Vector2i size{ g_size };
-
+void Region::add_free_edge_gpos(
+	Vector2i gpos, Vector2i rand_g_size, DirEdge& dir_to_free_edge_gpos
+) {
 	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
 		if (blocked_sides.has(dir)) {
 			continue;
@@ -495,7 +543,7 @@ void Region::add_free_edge_gpos(Vector2i gpos, DirEdge& dir_to_free_edge_gpos) {
 			}
 
 		} else if (dir == Direction::DOWN) {
-			edge_gpos.y += size.y;
+			edge_gpos.y += rand_g_size.y;
 			if (blocked_sides.has(Direction::LEFT)) {
 				edge_gpos.x += 1;
 			}
@@ -507,7 +555,7 @@ void Region::add_free_edge_gpos(Vector2i gpos, DirEdge& dir_to_free_edge_gpos) {
 			}
 
 		} else if (dir == Direction::RIGHT) {
-			edge_gpos.x += size.x;
+			edge_gpos.x += rand_g_size.x;
 			if (blocked_sides.has(Direction::UP)) {
 				edge_gpos.y += 1;
 			}
@@ -520,7 +568,7 @@ void Region::add_free_edge_gpos(Vector2i gpos, DirEdge& dir_to_free_edge_gpos) {
 			continue;
 		}
 
-		dir_to_free_edge_gpos[dir].push_back(Edge{ edge_gpos, size });
+		dir_to_free_edge_gpos[dir].push_back(Edge{ edge_gpos, rand_g_size });
 	}
 }
 
@@ -549,15 +597,31 @@ void Region::generate_zone(
 	ERR_FAIL_COND(primary_i == -1);
 	Ref<Region> p_region{ m_primary_regions[primary_i] };
 
+	// get a random region size
+	Vector2i length_addition{
+		rng->randi_range(0, p_region->rand_length_addition.x),
+		rng->randi_range(0, p_region->rand_length_addition.y)
+	};
+	Vector2i rand_g_size{ p_region->g_size + length_addition };
+	Vector2i rand_g_size_inc{ p_region->g_size_inclusive + length_addition };
+
+	ERR_FAIL_COND_MSG(
+		rand_g_size_inc.x > 8 || rand_g_size_inc.y > 8,
+		"region size + rand + blocked sides must be <= (8, 8)"
+	);
+
 	// find a free area that will fit the region, starting the search at a random offset
 	int rand_cell_i{ rng->randi_range(0, m_seg_cell_count - 1) };
-	const Vector2i p_g_size{ p_region->g_size_inclusive };
-	const int p_cell_i{ gen_occupancy->find_area_in_grid(p_g_size, rand_cell_i, rand_cell_i - 1) };
+	const int p_cell_i{
+		gen_occupancy->find_area_in_grid(rand_g_size_inc, rand_cell_i, rand_cell_i - 1)
+	};
 	ERR_FAIL_COND(p_cell_i == -1);
 	auto p_gpos{ Vector2i(p_cell_i % m_seg_g_size.x, p_cell_i / m_seg_g_size.x) };
 
-	// place dug tiles in the primaries cells
-	p_region->add_region(rng, pcg, p_gpos, dir_to_free_edge_gpos, w_seg);
+	if (is_debug) {
+		debug_region(p_gpos, rand_g_size_inc, p_region, w_seg);
+	}
+	p_region->add_region(rng, pcg, p_gpos, rand_g_size, dir_to_free_edge_gpos, w_seg);
 
 	// get threshold from ordered secondary regions to determine cutoff
 	uint64_t threshold_i{ 0 };
@@ -601,8 +665,6 @@ void Region::generate_zone(
 		}
 	}
 
-	//WARN_PRINT(vformat("s_region_rejects size is %d", s_region_rejects.size()));
-
 	const int MAX_ATTEMPTS{ 4 };
 
 	RegionVector temp_rejects{};
@@ -628,7 +690,6 @@ void Region::generate_zone(
 					w_seg
 				)
 			};
-			//WARN_PRINT(vformat("retry attempt %d to place region resulted in %s", attempt, success));
 
 			if (!success) {
 				temp_rejects.push_back(s_region);
@@ -656,7 +717,12 @@ bool Region::try_place_s_region(
 	Ref<BitGrid2D> gen_occupancy,
 	int w_seg
 ) {
-	//warn_print(vformat("attempting to place %s", s_region->name));
+	Vector2i length_addition{
+		rng->randi_range(0, rand_length_addition.x),
+		rng->randi_range(0, rand_length_addition.y)
+	};
+	Vector2i rand_g_size{ g_size + length_addition };
+	Vector2i rand_g_size_inc{ g_size_inclusive + length_addition };
 
 	const int64_t side_count{ joining_sides.size() };
 	int start_dir_i{ rng->randi_range(0, side_count - 1) };
@@ -682,7 +748,7 @@ bool Region::try_place_s_region(
 		int safety_iter{ 0 };
 		for (; safety_iter < MAX_SAFE_ITERATIONS; ++safety_iter) {
 			if (idx <= 0) {
-				size_i_fit = get_size_or_larger_i(dir_size_occ[req_dir], g_size_inclusive);
+				size_i_fit = get_size_or_larger_i(dir_size_occ[req_dir], rand_g_size_inc);
 				if (size_i_fit == -1) {
 					break;
 				}
@@ -703,7 +769,8 @@ bool Region::try_place_s_region(
 					gpos,
 					found_size,
 					static_cast<BitGrid2D::Direction>(dir),
-					g_size_inclusive
+					rng,
+					rand_g_size_inc
 				)
 			};
 			// edge is no longer empty for whatever reason
@@ -714,19 +781,23 @@ bool Region::try_place_s_region(
 				if (sized_gpos->size() == 0) {
 					dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
 				}
-				//warn_print(vformat("edge full on already searched %d", org_size.size()));
 				continue;
 			}
 			// there is enough room
-			if (org_size.size() == 2 && org_size[1] == g_size_inclusive) {
+			if (org_size.size() == 2 && org_size[1] == rand_g_size_inc) {
 				Vector2i dir_offset_gpos{ org_size[0] };
 				if (req_dir == Direction::UP) {
-					dir_offset_gpos.y -= g_size_inclusive.y - 1;
+					dir_offset_gpos.y -= rand_g_size_inc.y - 1;
 				} else if (req_dir == Direction::LEFT) {
-					dir_offset_gpos.x -= g_size_inclusive.x - 1;
+					dir_offset_gpos.x -= rand_g_size_inc.x - 1;
 				}
 				// is this even segment position, or is it in the search space in some way
-				add_region(rng, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
+				if (is_debug) {
+					debug_region(dir_offset_gpos, rand_g_size_inc, this, w_seg);
+				}
+				add_region(
+					rng, pcg, dir_offset_gpos, rand_g_size, dir_to_free_edge_gpos, w_seg
+				);
 				// edge filled so remove it
 				sized_gpos->set(idx, (*sized_gpos)[sized_gpos->size() - 1]);
 				sized_gpos->resize(sized_gpos->size() - 1);
@@ -734,7 +805,6 @@ bool Region::try_place_s_region(
 					dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
 				}
 				// edge is being used so remove it
-				//warn_print(vformat("placed from already searched at %s", org_size));
 				return true;
 			}
 			// edge doesnt have this size anymore so remove it
@@ -753,7 +823,6 @@ bool Region::try_place_s_region(
 
 				dir_size_to_gpos[req_dir_offset + s_i].push_back(found_origin);
 				dir_size_occ[req_dir] |= 1ull << s_i;
-				//warn_print(vformat("set bit from already searched: %s, origin: %s, size %s", s_i, found_origin, found_size));
 			}
 		}
 
@@ -776,7 +845,7 @@ bool Region::try_place_s_region(
 			// connected to the previous region while using the maximum search size
 			Vector2i search_origin{ gpos };
 			Vector2i search_size{ 8, 8 };
-			Vector2i wanted_size{ g_size_inclusive };
+			Vector2i wanted_size{ rand_g_size_inc };
 
 			// different rules for 1 length if there are stone sides because it will never fit
 			if (req_dir == Direction::UP) {
@@ -788,7 +857,7 @@ bool Region::try_place_s_region(
 				}
 
 				else {
-					search_size.x = prev_g_size.x + g_size.x;
+					search_size.x = prev_g_size.x + rand_g_size.x;
 					if (!blocked_sides.has(Direction::RIGHT)) {
 						search_size.x -= 1;
 					}
@@ -801,8 +870,8 @@ bool Region::try_place_s_region(
 				}
 
 				else {
-					search_origin.x -= g_size.x; 
-					search_size.x = prev_g_size.x + g_size.x;
+					search_origin.x -= rand_g_size.x; 
+					search_size.x = prev_g_size.x + rand_g_size.x;
 					
 					if (!blocked_sides.has(Direction::LEFT)) {
 						search_origin.x += 1;
@@ -819,8 +888,8 @@ bool Region::try_place_s_region(
 				}
 
 				else {
-					search_origin.y -= g_size.y;
-					search_size.y = prev_g_size.y + g_size.y;
+					search_origin.y -= rand_g_size.y;
+					search_size.y = prev_g_size.y + rand_g_size.y;
 					
 					if (!blocked_sides.has(Direction::UP)) {
 						search_origin.y += 1;
@@ -836,7 +905,7 @@ bool Region::try_place_s_region(
 				}
 
 				else {
-					search_size.y = prev_g_size.y + g_size.y;
+					search_size.y = prev_g_size.y + rand_g_size.y;
 					if (!blocked_sides.has(Direction::DOWN)) {
 						search_size.y -= 1;
 					}
@@ -850,7 +919,8 @@ bool Region::try_place_s_region(
 					search_origin,
 					search_size,
 					static_cast<BitGrid2D::Direction>(dir),
-					g_size_inclusive
+					rng,
+					rand_g_size_inc
 				)
 			};
 
@@ -859,29 +929,30 @@ bool Region::try_place_s_region(
 				// edge cant be used so remove it
 				free_edge_gpos[gpos_i] = free_edge_gpos[free_edge_gpos.size() - 1];
 				free_edge_gpos.resize(free_edge_gpos.size() - 1);
-
-				//warn_print(vformat("edge full %d", org_size.size()));
 				continue;
 			}
 
 			// there is enough room
-			if (org_size.size() == 2 && org_size[1] == g_size_inclusive) {
+			if (org_size.size() == 2 && org_size[1] == rand_g_size_inc) {
 				Vector2i dir_offset_gpos{ org_size[0] };
 				if (dir == Direction::DOWN) {
-					dir_offset_gpos.y -= g_size_inclusive.y - 1;
+					dir_offset_gpos.y -= rand_g_size_inc.y - 1;
 				} else if (dir == Direction::RIGHT) {
-					dir_offset_gpos.x -= g_size_inclusive.x - 1;
+					dir_offset_gpos.x -= rand_g_size_inc.x - 1;
 				}
 
 				free_edge_gpos[gpos_i] = free_edge_gpos[free_edge_gpos.size() - 1];
 				free_edge_gpos.resize(free_edge_gpos.size() - 1);
 
 				// is this even segment position, or is it in the search space in some way
-				add_region(rng, pcg, dir_offset_gpos, dir_to_free_edge_gpos, w_seg);
+				if (is_debug) {
+					debug_region(dir_offset_gpos, rand_g_size_inc, this, w_seg);
+				}
+				add_region(
+					rng, pcg, dir_offset_gpos, rand_g_size, dir_to_free_edge_gpos, w_seg
+				);
 
 				// edge is being used so remove it
-				//warn_print(vformat("placed at %s", org_size));
-
 				return true;
 			}
 
@@ -907,23 +978,10 @@ void Region::add_region(
 	Ref<RandomNumberGenerator> rng,
 	Ref<PCG> pcg,
 	Vector2i gpos,
+	Vector2i rand_g_size,
 	DirEdge &dir_to_free_edge_gpos,
 	int w_seg
 ) {
-	if (is_debug) {
-		//WARN_PRINT(vformat("added region %s at %s", region->name, gpos));
-		String a{ "" };
-		for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
-			a += "[";
-			for (Edge edge : dir_to_free_edge_gpos[dir]) {
-				a += vformat("(gpos%s, size%s), ", edge.gpos, edge.size);
-			}
-			a += "], ";
-		}
-		//WARN_PRINT(vformat("added edge positions for w_seg %s:\n%s", w_seg, a));
-		debug_region(gpos, this, w_seg);
-	}
-
 	Vector2i internal_gpos{ gpos };
 	if (blocked_sides.has(Direction::UP)) {
 		internal_gpos.y += 1;
@@ -932,25 +990,28 @@ void Region::add_region(
 		internal_gpos.x += 1;
 	}
 	
-	fill_blocked_edges(internal_gpos, rng, pcg);
+	fill_blocked_edges(internal_gpos, rand_g_size, rng, pcg);
 
 	pcg->add_tile_rect(
-		Tile::DUG * m_seg_cell_count, Tile::DUG, internal_gpos, g_size, false, rng
+		Tile::BACKGROUND * m_seg_cell_count, Tile::DUG, internal_gpos, rand_g_size, false, rng
 	);
 
-	fill_internal(internal_gpos, rng, pcg);
+	fill_internal(internal_gpos, rand_g_size, rng, pcg);
 
-	pcg->generative_occupancy->set_area(internal_gpos, g_size); // ensure dug doesnt get overwritten
+	pcg->generative_occupancy->set_area(internal_gpos, rand_g_size); // ensure dug doesnt get overwritten
 
-	add_free_edge_gpos(gpos, dir_to_free_edge_gpos);
+	add_free_edge_gpos(gpos, rand_g_size, dir_to_free_edge_gpos);
 }
 
 void Region::fill_internal(
-	Vector2i w_internal_gpos, Ref<RandomNumberGenerator> rng, Ref<PCG> pcg
+	Vector2i w_internal_gpos,
+	Vector2i rand_g_size,
+	Ref<RandomNumberGenerator> rng,
+	Ref<PCG> pcg
 ) {
-	int i{ 0 };
-
 	for (const InternalChoiceSet &choice_sets : internal_choices) {
+
+
 		// weighted random choice
 		float rand_f{ rng->randf() };
 		int choice_i{ 0 };
@@ -962,58 +1023,101 @@ void Region::fill_internal(
 		if (choice_i >= choice_sets.norm_weights.size()) {
 			choice_i = choice_sets.norm_weights.size() - 1;
 		}
+		ERR_FAIL_INDEX(choice_i, choice_sets.choice_set.size());
 		InternalEntry choice{ choice_sets.choice_set[choice_i] };
 
-		if (choice.placement == Placement::FILL) {
-			Vector2i limit{ g_size - choice.size + Vector2i(1, 1) };
-			if (choice.anchor_dir == Direction::UP || choice.anchor_dir == Direction::DOWN) {
+		Vector2i seg_placement_gpos{ 0, 0 };
+
+		if (choice.placement == Placement::FORCE_GPOS) {
+			Vector2i gpos{ w_internal_gpos };
+			if (choice.gpos_alignment.x < 0) {
+				gpos.x += rand_g_size.x;
+			}
+			else {
+				gpos.x -= 1;
+			}
+
+			if (choice.gpos_alignment.y < 0) {
+				gpos.y += rand_g_size.y;
+			}
+			else {
+				gpos.y -= 1;
+			}
+
+			gpos += choice.gpos_alignment;
+			
+			if (choice.type == InternalEntry::TYPE_CALLABLE) {
+				choice.callable.call(gpos);
+			} else {
+				pcg->add_gpos_tile(choice.layer_offset, choice.tile_index, gpos, true, rng);
+			}
+			continue;
+
+		} else if (choice.placement == Placement::FILL) {
+			Vector2i limit{ rand_g_size - choice.size + Vector2i(1, 1) };
+			Vector2i offset_gpos{ w_internal_gpos };
+
+			if (choice.gpos_alignment == A_UP) {
 				limit.y = 1;
-			} else if (choice.anchor_dir == Direction::LEFT || choice.anchor_dir == Direction::RIGHT) {
+			} else if (choice.gpos_alignment == A_DOWN) {
+				limit.y = 1;
+				offset_gpos.y += rand_g_size.y - 1;
+			} else if (choice.gpos_alignment == A_LEFT) {
 				limit.x = 1;
+			} else if (choice.gpos_alignment == A_RIGHT) {
+				limit.x = 1;
+				offset_gpos.x += rand_g_size.x - 1;
 			}
 
 			for (int x{ 0 }; x < limit.x; x += choice.size.x) {
 				for (int y{ 0 }; y < limit.y; y += choice.size.y) {
-					try_place_internal(choice, w_internal_gpos + Vector2i(x, y), pcg, rng);
+					try_place_internal(choice, offset_gpos + Vector2i(x, y), pcg, rng);
 				}
 			}
 
 			continue;
-		}
 
-		Vector2i seg_placement_gpos{ 0, 0 };
-		if (choice.placement == Placement::CENTER) {
-			if (choice.anchor_dir == Direction::NONE) {
-				seg_placement_gpos = g_size / 2 - choice.size / 2;
-			} else if (choice.anchor_dir == Direction::UP) {
-				seg_placement_gpos = Vector2i(g_size.x / 2, 0);
-			} else if (choice.anchor_dir == Direction::DOWN) {
-				seg_placement_gpos = Vector2i(g_size.x / 2, g_size.y - choice.size.y);
-			} else if (choice.anchor_dir == Direction::LEFT) {
-				seg_placement_gpos = Vector2i(0, g_size.y / 2);
-			} else if (choice.anchor_dir == Direction::RIGHT) {
-				seg_placement_gpos = Vector2i(g_size.x - choice.size.x, g_size.y / 2);
+		} else if (choice.placement == Placement::CENTER) {
+			if (choice.gpos_alignment == A_NONE) {
+				seg_placement_gpos = rand_g_size / 2 - choice.size / 2;
+			} else if (choice.gpos_alignment == A_UP) {
+				seg_placement_gpos = Vector2i(rand_g_size.x / 2, 0);
+			} else if (choice.gpos_alignment == A_DOWN) {
+				seg_placement_gpos = Vector2i(rand_g_size.x / 2, rand_g_size.y - choice.size.y);
+			} else if (choice.gpos_alignment == A_LEFT) {
+				seg_placement_gpos = Vector2i(0, rand_g_size.y / 2);
+			} else if (choice.gpos_alignment == A_RIGHT) {
+				seg_placement_gpos = Vector2i(rand_g_size.x - choice.size.x, rand_g_size.y / 2);
 			}
 
 		} else if (choice.placement == Placement::END) {
-			if (choice.anchor_dir == Direction::UP) {
-				seg_placement_gpos.x = g_size.x - choice.size.x;
-			} else if (choice.anchor_dir == Direction::DOWN || choice.anchor_dir == Direction::RIGHT) {
-				seg_placement_gpos = g_size - choice.size;
-			} else if (choice.anchor_dir == Direction::LEFT) {
-				seg_placement_gpos.y = g_size.y - choice.size.y;
+			if (choice.gpos_alignment == A_UP) {
+				seg_placement_gpos.x = rand_g_size.x - choice.size.x;
+			} else if (
+				choice.gpos_alignment == A_DOWN ||
+				choice.gpos_alignment == A_RIGHT
+			) {
+				seg_placement_gpos = rand_g_size - choice.size;
+			} else if (choice.gpos_alignment == A_LEFT) {
+				seg_placement_gpos.y = rand_g_size.y - choice.size.y;
 			}
 
 		} else if (choice.placement == Placement::RANDOM) {
 
-			BitGrid2D::Direction bit_dir{ static_cast<BitGrid2D::Direction>(choice.anchor_dir) };
+			BitGrid2D::Direction dir{};
+			if (choice.gpos_alignment == A_NONE) { dir = BitGrid2D::NONE; }
+			else if (choice.gpos_alignment == A_UP) { dir = BitGrid2D::UP; }
+			else if (choice.gpos_alignment == A_DOWN) { dir = BitGrid2D::DOWN; }
+			else if (choice.gpos_alignment == A_LEFT) { dir = BitGrid2D::LEFT; }
+			else if (choice.gpos_alignment == A_RIGHT) { dir = BitGrid2D::RIGHT; }
+
 			Vector2i unset_gpos{
 				pcg->generative_occupancy->find_rand_anchored_unset_area_in_bounds(
-					rng, w_internal_gpos, g_size, bit_dir, choice.size
+					rng, w_internal_gpos, rand_g_size, dir, choice.size
 				)
 			};
 
-			if (unset_gpos == Vector2i(-9999, -9999)) {
+			if (unset_gpos == NOT_SET) {
 				continue;
 			}
 
@@ -1027,11 +1131,11 @@ void Region::fill_internal(
 			continue;
 
 		} else if (choice.placement == Placement::START) {
-			if (choice.anchor_dir == Direction::DOWN) {
-				seg_placement_gpos.y += g_size.y - choice.size.y;
+			if (choice.gpos_alignment == A_DOWN) {
+				seg_placement_gpos.y += rand_g_size.y - choice.size.y;
 			}
-			else if (choice.anchor_dir == Direction::LEFT) {
-				seg_placement_gpos.x += g_size.x - choice.size.x;
+			else if (choice.gpos_alignment == A_LEFT) {
+				seg_placement_gpos.x += rand_g_size.x - choice.size.x;
 			}
 		}
 		try_place_internal(choice, w_internal_gpos + seg_placement_gpos, pcg, rng);
@@ -1054,6 +1158,7 @@ void Region::try_place_internal(
 
 void Region::fill_blocked_edges(
 	Vector2i internal_gpos,
+	Vector2i rand_g_size,
 	Ref<RandomNumberGenerator> rng,
 	Ref<PCG> pcg
 ) {
@@ -1063,14 +1168,14 @@ void Region::fill_blocked_edges(
 		int dir{ blocked_sides[i] };
 		BlockedFill fill{ static_cast<BlockedFill>(blocked_fill[i]) };
 		Vector2i blocked_gpos{ internal_gpos };
-		Vector2i blocked_rect{ g_size };
+		Vector2i blocked_rect{ rand_g_size };
 
 		if (dir == Direction::UP) {
 			blocked_gpos -= Vector2i(0, 1);
 			blocked_rect.y = 1;
 			
 		} else if (dir == Direction::DOWN) {
-			blocked_gpos += Vector2i(0, g_size.y);
+			blocked_gpos += Vector2i(0, rand_g_size.y);
 			blocked_rect.y = 1;
 
 		} else if (dir == Direction::LEFT) {
@@ -1078,7 +1183,7 @@ void Region::fill_blocked_edges(
 			blocked_rect.x = 1;
 
 		} else if (dir == Direction::RIGHT) {
-			blocked_gpos += Vector2i(g_size.x, 0);
+			blocked_gpos += Vector2i(rand_g_size.x, 0);
 			blocked_rect.x = 1;
 		}
 
@@ -1090,15 +1195,15 @@ void Region::fill_blocked_edges(
 		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
 	}
 	if ((corner_bitmap & 0b0110) == 0b0110) { // fill bottom left corner
-		Vector2i blocked_gpos{ internal_gpos + Vector2i(-1, g_size.y) };
+		Vector2i blocked_gpos{ internal_gpos + Vector2i(-1, rand_g_size.y) };
 		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
 	}
 	if ((corner_bitmap & 0b1010) == 0b1010) { // fill bottom right corner
-		Vector2i blocked_gpos{ internal_gpos + g_size };
+		Vector2i blocked_gpos{ internal_gpos + rand_g_size };
 		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
 	}
 	if ((corner_bitmap & 0b1001) == 0b1001) { // fill top right corner
-		Vector2i blocked_gpos{ internal_gpos + Vector2i(g_size.x, -1) };
+		Vector2i blocked_gpos{ internal_gpos + Vector2i(rand_g_size.x, -1) };
 		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
 	}
 }
@@ -1162,13 +1267,12 @@ void Region::fill_blocked_rect(
 	pcg->add_tile_rect(offset, tile_i, gpos, rect, true, rng);
 }
 
-void Region::debug_region(Vector2i gpos, Ref<Region> region, int w_seg) {
-	const Vector2i size{ region->g_size_inclusive };
+void Region::debug_region(Vector2i gpos, Vector2i rand_g_size_inc, Ref<Region> region, int w_seg) {
 	SceneTree *tree{ SceneTree::get_singleton() };
 	Node *main{ tree->get_root()->get_node(NodePath("Main")) };
 
-	for (int y{ 0 }; y < size.y; ++y) {
-		for (int x{ 0 }; x < size.x; ++x) {
+	for (int y{ 0 }; y < rand_g_size_inc.y; ++y) {
+		for (int x{ 0 }; x < rand_g_size_inc.x; ++x) {
 			Label *label{ memnew(Label) };
 
 			label->add_theme_font_size_override("font_size", 12);
@@ -1201,14 +1305,14 @@ String Region::get_internal_choices_debug() const {
 
 			if (entry.type == InternalEntry::TYPE_CALLABLE) {
 				out += vformat(
-					"{callable(%s), size(%s), weight(%d), anchor_dir(%s), placement(%s)}, ",
-					entry.callable, entry.size, choice_sets.norm_weights[j], entry.anchor_dir, entry.placement
+					"{callable(%s), size(%s), weight(%d), gpos_offset(%s), placement(%s)}, ",
+					entry.callable, entry.size, choice_sets.norm_weights[j], entry.gpos_alignment, entry.placement
 				);
 
 			} else {
 				out += vformat(
-					"{tile_index(%s), layer_offset(%s), size(%s), weight(%s), anchor_dir(%s), placement(%s)}, ",
-					entry.tile_index, entry.layer_offset, entry.size, choice_sets.norm_weights[j], entry.anchor_dir, entry.placement
+					"{tile_index(%s), layer_offset(%s), size(%s), weight(%s), gpos_offset(%s), placement(%s)}, ",
+					entry.tile_index, entry.layer_offset, entry.size, choice_sets.norm_weights[j], entry.gpos_alignment, entry.placement
 				);
 			}
 		}

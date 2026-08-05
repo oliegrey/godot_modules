@@ -24,22 +24,21 @@ public:
 		Callable callable;
 		int32_t tile_index = -1;
 		int32_t layer_offset = -1;
-
 		Vector2i size;
-		int32_t anchor_dir;
+		Vector2i gpos_alignment;
 		int32_t placement;
 
 		static InternalEntry make_callable(
 			const Callable &p_callable,
 			const Vector2i p_size,
-			const int32_t p_anchor_dir,
+			const Vector2 p_gpos_alignment,
 			const int32_t p_placement
 		) {
 			InternalEntry e;
 			e.type = TYPE_CALLABLE;
 			e.callable = p_callable;
 			e.size = p_size;
-			e.anchor_dir = p_anchor_dir;
+			e.gpos_alignment = Vector2i(p_gpos_alignment);
 			e.placement = p_placement;
 			return e;
 		}
@@ -48,7 +47,7 @@ public:
 			const int32_t p_tile_index,
 			const int32_t p_layer_offset,
 			const Vector2i p_size,
-			const int32_t p_anchor_dir,
+			const Vector2 p_gpos_alignment,
 			const int32_t p_placement
 		) {
 			InternalEntry e;
@@ -56,7 +55,7 @@ public:
 			e.tile_index = p_tile_index;
 			e.layer_offset = p_layer_offset;
 			e.size = p_size;
-			e.anchor_dir = p_anchor_dir;
+			e.gpos_alignment = Vector2i(p_gpos_alignment);
 			e.placement = p_placement;
 			return e;
 		}
@@ -76,8 +75,15 @@ public:
 		RIGHT = 3,
 		DIRECTION_MAX = 4
 	};
-	enum Placement { RANDOM, CENTER, START, END, FILL };
+	enum Axis { NO_AXES, X, Y, ALL_AXES };
+	enum Placement { RANDOM, CENTER, START, END, FILL, FORCE_GPOS };
 	enum BlockedFill { DIRT, STONE, MIX, ANY, ANY_STONE };
+
+	inline static const Vector2i A_NONE{ 0, 0 };
+	inline static const Vector2i A_UP{ 0, 1 };
+	inline static const Vector2i A_DOWN{ 0, -1 };
+	inline static const Vector2i A_LEFT{ 1, 0 };
+	inline static const Vector2i A_RIGHT{ -1, 0 };
 
 private:
 	using RegionVector = LocalVector<Ref<Region>>;
@@ -104,13 +110,13 @@ private:
 	inline static RegionVector m_secondary_regions{};
 	inline static PackedFloat32Array m_secondary_weights{};
 
-	int m_cell_count;
-
 	inline static bool is_debug;
 
 	inline static std::array<std::array<uint64_t, 8>, 8> dominance_mask;
 
 public:
+	inline static const Vector2i NOT_SET{ -9999, -9999 };
+
 	String name;
 	Slot slot;
 	Vector2i g_size;
@@ -122,6 +128,7 @@ public:
 	float spawn_weight;
 	int threshold;
 	Vector2i g_size_inclusive; // includes stone sides
+	Vector2i rand_length_addition = NOT_SET;
 
 	LocalVector<InternalChoiceSet> internal_choices;
 
@@ -140,12 +147,15 @@ private:
 
 	static int get_size_or_larger_i(uint64_t bitmap, const Vector2i size);
 
-	void add_free_edge_gpos(Vector2i gpos, DirEdge &dir_to_free_edge_gpos);
+	void add_free_edge_gpos(
+		Vector2i gpos, Vector2i rand_g_size, DirEdge &dir_to_free_edge_gpos
+	);
 
 	void add_region(
 		Ref<RandomNumberGenerator> rng,
 		Ref<PCG> pcg,
 		Vector2i gpos,
+		Vector2i rand_g_size,
 		DirEdge &dir_to_free_edge_gpos,
 		int w_seg
 	);
@@ -160,7 +170,9 @@ private:
 		int w_seg
 	);
 
-	static void debug_region(Vector2i gpos, Ref<Region> region, int w_seg);
+	static void debug_region(
+		Vector2i gpos, Vector2i rand_g_size, Ref<Region> region, int w_seg
+	);
 
 	static int get_size_i(Vector2i size);
 
@@ -182,11 +194,15 @@ private:
 	);
 
 	void fill_blocked_edges(
-		Vector2i internal_gpos, Ref<RandomNumberGenerator> rng, Ref<PCG> pcg
+		Vector2i internal_gpos,
+		Vector2i rand_g_size,
+		Ref<RandomNumberGenerator> rng,
+		Ref<PCG> pcg
 	);
 
 	void fill_internal(
 		Vector2i internal_gpos,
+		Vector2i rand_g_size,
 		Ref<RandomNumberGenerator> rng,
 		Ref<PCG> pcg
 	);
@@ -199,6 +215,11 @@ protected:
 	static void _bind_methods();
 
 public:
+	static Vector2i ALIGN_NONE();
+	static Vector2i ALIGN_UP();
+	static Vector2i ALIGN_DOWN();
+	static Vector2i ALIGN_LEFT();
+	static Vector2i ALIGN_RIGHT();
 	String get_name() const;
 	Region::Slot get_slot() const;
 	Vector2i get_g_size() const;
@@ -211,6 +232,8 @@ public:
 
 	static void initialize(Vector2i seg_g_size, bool debug = false);
 
+	static int try_mirror_axis_dir_i(int axis_i, int dir_i);
+
 	static Ref<Region> create(
 		String _name,
 		Slot _slot,
@@ -218,16 +241,17 @@ public:
 		int _spawn_weight,
 		int _threshold,
 
-		PackedInt32Array _blocked_sides = PackedInt32Array{},
-		PackedInt32Array _blocked_fill = PackedInt32Array{},
-		PackedInt32Array _joining_sides = PackedInt32Array{
-			Direction::UP, Direction::DOWN, Direction::LEFT, Direction::RIGHT
-		},
+		PackedInt32Array _blocked_sides,
+		PackedInt32Array _blocked_fill,
+		PackedInt32Array _joining_sides,
 
-		TypedArray<Array> internal_class_or_tile_choices = TypedArray<Array>{}, // arrays of [callable, tile_i, ...]
-		TypedArray<PackedInt32Array> internal_weights = TypedArray<PackedInt32Array>{},
-		TypedArray<PackedInt32Array> internal_anchor_dirs = TypedArray<PackedInt32Array>{},
-		TypedArray<PackedInt32Array> internal_placements = TypedArray<PackedInt32Array>{}
+		TypedArray<Array> internal_class_or_tile_choices, // arrays of [callable, tile_i, ...]
+		TypedArray<PackedInt32Array> internal_weights,
+		TypedArray<PackedVector2Array> internal_gpos_alignments,
+		TypedArray<PackedInt32Array> internal_placements,
+
+		Vector2i _rand_length_addition = Vector2i(0, 0),
+		Axis mirror_axes = Axis::NO_AXES
 	);
 
 	static void finalize();
@@ -257,3 +281,4 @@ VARIANT_ENUM_CAST(Region::Slot)
 VARIANT_ENUM_CAST(Region::Direction)
 VARIANT_ENUM_CAST(Region::Placement)
 VARIANT_ENUM_CAST(Region::BlockedFill)
+VARIANT_ENUM_CAST(Region::Axis)

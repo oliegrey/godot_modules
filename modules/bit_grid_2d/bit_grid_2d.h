@@ -50,6 +50,7 @@ public:
 		Vector2i origin,
 		Vector2i search_size,
 		Direction anchor_dir,
+		Ref<RandomNumberGenerator> rng,
 		Vector2i wanted_size = Vector2i(0, 0)
 	) const;
 

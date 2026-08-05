@@ -541,8 +541,8 @@ void Tile::init_layer_configs() {
 }
 
 Ref<Tile> Tile::get_tile(int tile) { 
-    ERR_FAIL_INDEX_V(tile, (int)tile_configs.size(), Ref<Tile>());
-    return tile_configs[tile]; 
+    ERR_FAIL_INDEX_V(tile, static_cast<int>(tile_configs.size()), Ref<Tile>());
+    return tile_configs[tile];
 }
 
 Ref<Tile> Tile::get_foreground() {
