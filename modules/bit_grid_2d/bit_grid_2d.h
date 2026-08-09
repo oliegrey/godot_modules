@@ -12,6 +12,16 @@ public:
 	enum Direction {NONE = -1, UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, DIRECTION_MAX = 4};
 	enum Axis {X = 0, Y = 1};
 
+	struct HistogramResult {
+		int wanted_cell_i;
+		PackedInt32Array histogram;
+
+		HistogramResult() : wanted_cell_i{ -1 } { }
+		HistogramResult(int _wanted_cell_i, const PackedInt32Array &_histogram) :
+			wanted_cell_i{ _wanted_cell_i }, histogram{ _histogram }
+		{ }
+	};
+
 private:
 	Vector2i grid_size;
 	int cell_count;
@@ -19,8 +29,8 @@ private:
 
 private:
 	int gpos_to_cell_i(const Vector2i gpos) const;
-
 	int is_area_state(int start_cell_i, Vector2i size, bool get_unset) const;
+	bool clamp_search_area(Vector2i &origin, Vector2i &search_size) const;
 
 protected:
 	static void _bind_methods();
@@ -46,12 +56,14 @@ public:
 
 	bool is_area_free(const Vector2i origin, const Vector2i) const;
 	void set_area(const Vector2i gpos, const Vector2i size);
-	PackedVector2Array find_anchored_unset_areas_in_bounds(
+
+	HistogramResult compute_histogram(
 		Vector2i origin,
-		Vector2i search_size,
+		Vector2i size,
 		Direction anchor_dir,
-		Ref<RandomNumberGenerator> rng,
-		Vector2i wanted_size = Vector2i(0, 0)
+		int start_bar = 0,
+		Vector2i wanted_size = Vector2i(0, 0),
+		bool exit_on_wanted_found = false
 	) const;
 
 	Vector2i find_rand_anchored_unset_area_in_bounds(
@@ -97,6 +109,22 @@ public:
 		Vector2i search_size,
 		Vector2i search_start_gpos = Vector2i(-1, -1)
 	) const;
+
+	Vector2i find_anchored_area_in_area(
+		Vector2i origin,
+		Vector2i search_size,
+		Direction anchor_dir,
+		Ref<RandomNumberGenerator> rng,
+		Vector2i wanted_size
+	) const;
+
+	LocalVector<Rect2i> find_largest_anchored_areas_in_area(
+		Vector2i origin,
+		Vector2i search_size,
+		Direction anchor_dir,
+		Ref<RandomNumberGenerator> rng,
+		Vector2i wanted_size
+	) const
 };
 
 VARIANT_ENUM_CAST(BitGrid2D::Direction);

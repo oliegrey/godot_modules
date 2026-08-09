@@ -286,25 +286,11 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 	return true;
 }
 
-// CAREFUL: HALF OF THIS FUNCTION IS AI DOGSHIT
-// returns origin, size pairs
-// // // // //
-// origin is top left cell of search size.
-// wanted_size == (0,0): build full histogram, return largest unset rect per run.
-// wanted_size given: return as soon as a fit is found, without finishing the sweep.
-// rng valid: start the bar sweep at a random offset so repeated "wanted"
-// queries don't always return the same leftmost/topmost fit.
-PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
-	Vector2i origin,
-	Vector2i search_size,
-	const Direction anchor_dir,
-	Ref<RandomNumberGenerator> rng,
-	Vector2i wanted_size
-) const {
+// false if the clamped search area is <= 0
+bool BitGrid2D::clamp_search_area(Vector2i &origin, Vector2i &search_size) const {
 	if (search_size.x <= 0 || search_size.y <= 0) {
-		return PackedVector2Array();
+		return false;
 	}
-
 	if (origin.x < 0) {
 		search_size.x += origin.x;
 		origin.x = 0;
@@ -314,176 +300,12 @@ PackedVector2Array BitGrid2D::find_anchored_unset_areas_in_bounds(
 		origin.y = 0;
 	}
 	if (origin.x + search_size.x >= grid_size.x) {
-		int delta{ origin.x + search_size.x - grid_size.x };
-		search_size.x -= delta;
+		search_size.x -= (origin.x + search_size.x - grid_size.x);
 	}
 	if (origin.y + search_size.y >= grid_size.y) {
-		int delta{ origin.y + search_size.y - grid_size.y };
-		search_size.y -= delta;
+		search_size.y -= (origin.y + search_size.y - grid_size.y);
 	}
-
-	if (search_size.x < wanted_size.x || search_size.y < wanted_size.y) {
-		wanted_size = Vector2i(0, 0);
-	}
-
-	const bool has_wanted{ wanted_size.x > 0 && wanted_size.y > 0 };
-	ERR_FAIL_COND_V_MSG(
-		has_wanted && (wanted_size.x > search_size.x || wanted_size.y > search_size.y),
-		PackedVector2Array(), "wanted size larger than search size"
-	);
-
-	Vector2i hist_origin{ origin };
-	int hist_polarity{ 1 };
-	Axis hist_axis{};
-	switch (anchor_dir) {
-		case Direction::DOWN: {
-			hist_polarity = -1;
-			hist_origin.y += search_size.y - 1;
-			[[fallthrough]];
-		}
-		case Direction::UP: {
-			hist_axis = Axis::Y;
-			break;
-		}
-		case Direction::RIGHT: {
-			hist_polarity = -1;
-			hist_origin.x += search_size.x - 1;
-			[[fallthrough]];
-		}
-		case Direction::LEFT: {
-			hist_axis = Axis::X;
-			break;
-		}
-		default:
-			return PackedVector2Array();
-	}
-
-	const int hist_max_dist{ search_size[hist_axis] };
-	const int max_bar_count{ search_size[1 - hist_axis] };
-	const int wanted_height{ has_wanted ? wanted_size[hist_axis] : 0 };
-	const int wanted_width{ has_wanted ? wanted_size[1 - hist_axis] : 0 };
-
-	const int base_cell_i{ gpos_to_cell_i(hist_origin) };
-	Vector2i axis_unit;
-	axis_unit[hist_axis] = 1;
-	Vector2i bar_unit;
-	bar_unit[1 - hist_axis] = 1;
-	const int step_axis{ (gpos_to_cell_i(hist_origin + axis_unit) - base_cell_i) * hist_polarity };
-	const int step_bar{ gpos_to_cell_i(hist_origin + bar_unit) - base_cell_i };
-
-	// offset == 0 (no rng, or degenerate range) keeps this identical to the unrotated path.
-	int offset{ 0 };
-	if (rng.is_valid() && max_bar_count > 1) {
-		offset = rng->randi_range(0, max_bar_count - 1);
-	}
-	const bool has_offset{ offset != 0 };
-	// virtual index of the synthetic wall bar separating [offset, max) from [0, offset)
-	const int wrap_pos{ max_bar_count - offset };
-	const int total_bars{ has_offset ? max_bar_count + 1 : max_bar_count };
-
-	// maps a virtual (wall-shifted) bar index back to its real spatial column
-	auto real_left = [&](int vi) -> int {
-		if (!has_offset) {
-			return vi;
-		}
-		if (vi < wrap_pos) {
-			return offset + vi;
-		}
-		return vi - wrap_pos - 1;
-	};
-
-	// Heights computed on demand, fed straight into the stack sweep in the same loop:
-	// lets "wanted" mode short-circuit before the histogram is fully built.
-	Vector<int> heights;
-	heights.resize(total_bars + 1);
-	int *heights_ptr{ heights.ptrw() };
-	const uint8_t *bitmap_ptr{ bitmap.ptr() };
-
-	Vector<int> stack_idx;
-	stack_idx.resize(total_bars + 2);
-	int *stack_ptr{ stack_idx.ptrw() };
-	int stack_top{ -1 }; // -1 == empty
-
-	PackedVector2Array result{};
-
-	int best_area{ 0 };
-	Vector2i best_origin{};
-	Vector2i best_size{};
-
-	int row_cell_i{ base_cell_i + step_bar * offset };
-
-	for (int vi{ 0 }; vi <= total_bars; ++vi) {
-		int cur_height{ 0 };
-		const bool is_wall{ has_offset && vi == wrap_pos };
-
-		if (vi < total_bars) {
-			if (is_wall) {
-				// zero-height wall: real bars max-1 and 0 aren't spatially adjacent, so force the run to close here
-				heights_ptr[vi] = 0;
-				cur_height = 0;
-				row_cell_i = base_cell_i;
-			} else {
-				int cell_i{ row_cell_i };
-				int hist_dist{ 0 };
-				for (; hist_dist < hist_max_dist; ++hist_dist, cell_i += step_axis) {
-					const bool is_cell_set{ ((bitmap_ptr[cell_i >> 3] >> (cell_i & 7)) & 1) == 1 };
-					if (is_cell_set) {
-						break;
-					}
-				}
-				heights_ptr[vi] = hist_dist;
-				cur_height = hist_dist;
-				row_cell_i += step_bar;
-			}
-		}
-
-		while (stack_top >= 0 && heights_ptr[stack_ptr[stack_top]] >= cur_height) {
-			const int top{ stack_ptr[stack_top] };
-			--stack_top;
-			const int height{ heights_ptr[top] };
-			if (height <= 0) {
-				continue; // gap bar or seam wall, not a real rectangle
-			}
-			const int left{ stack_top < 0 ? 0 : stack_ptr[stack_top] + 1 };
-			const int width{ vi - left };
-			const int spatial_left{ real_left(left) };
-
-			if (has_wanted && height >= wanted_height && width >= wanted_width) {
-				Vector2i found_origin{};
-				Vector2i found_size{};
-				found_origin[hist_axis] = hist_origin[hist_axis];
-				found_origin[1 - hist_axis] = hist_origin[1 - hist_axis] + spatial_left;
-				found_size[hist_axis] = wanted_height;
-				found_size[1 - hist_axis] = wanted_width;
-
-				result.clear();
-				result.push_back(found_origin);
-				result.push_back(found_size);
-				return result;
-			}
-
-			const int area{ height * width };
-			if (area > best_area) {
-				best_area = area;
-				best_origin[hist_axis] = hist_origin[hist_axis];
-				best_origin[1 - hist_axis] = hist_origin[1 - hist_axis] + spatial_left;
-				best_size[hist_axis] = height;
-				best_size[1 - hist_axis] = width;
-			}
-		}
-
-		if (cur_height <= 0) {
-			if (best_area > 0) {
-				result.push_back(best_origin);
-				result.push_back(best_size);
-				best_area = 0;
-			}
-		}
-
-		stack_ptr[++stack_top] = vi;
-	}
-
-	return result;
+	return search_size.x > 0 && search_size.y > 0;
 }
 
 // wraps for the anchor dir (e.g. Direction::UP would wrap on the x axis)
@@ -495,6 +317,7 @@ Vector2i BitGrid2D::find_rand_anchored_unset_area_in_bounds(
 	const Direction anchor_dir,
 	Vector2i wanted_size
 ) const {
+
 	Vector2i search_origin{ bounds_origin };
 	Vector2i search_size{ bounds_size };
 
@@ -701,6 +524,148 @@ int BitGrid2D::find_area_in_grid(
 		cell_i = (start_cell + i) % cell_count;
 	}
 	return -1;
+}
+
+
+LocalVector<Rect2i> BitGrid2D::find_largest_anchored_areas_in_area(
+	Vector2i origin,
+	Vector2i search_size,
+	Direction anchor_dir,
+	Ref<RandomNumberGenerator> rng,
+	Vector2i wanted_size
+) const {
+	const int start_bar{
+		rng == Ref<RandomNumberGenerator>() ? 0 : rng->randi_range(0, search_size.x)
+	};
+	HistogramResult hist{
+		compute_histogram(origin, search_size, anchor_dir, start_bar, wanted_size, false)
+	};
+	PackedInt32Array &histogram{ hist.histogram };
+	LocalVector<Rect2i> areas;
+
+	if (hist.wanted_cell_i != -1) {
+		const int cell_i{ hist.wanted_cell_i };
+		areas.push_back(
+			Rect2i{ Vector2i{ cell_i / grid_size.x, cell_i % grid_size.x}, wanted_size }
+		);
+
+		int bar_i{ anchor_dir <= Direction::DOWN ? cell_i : cell_i / grid_size.x };
+		int end_bar_i{ bar_i + wanted_size[anchor_dir / 2] };
+		for (; bar_i < end_bar_i; ++bar_i) {
+			histogram.remove_at(bar_i);
+		}
+	}
+
+	// go until you hit a zero and add them in order
+	// work out the area under each length
+}
+
+Vector2i BitGrid2D::find_anchored_area_in_area(
+	Vector2i origin,
+	Vector2i search_size,
+	Direction anchor_dir,
+	Ref<RandomNumberGenerator> rng,
+	Vector2i wanted_size
+) const {
+	const int start_bar{
+		rng == Ref<RandomNumberGenerator>() ? 0 : rng->randi_range(0, search_size.x)
+	};
+	HistogramResult hist{
+		compute_histogram(origin, search_size, anchor_dir, start_bar, wanted_size, true)
+	};
+	const int cell_i{ hist.wanted_cell_i };
+	if (cell_i == -1) {
+		return Vector2i{ -9999, -9999 };
+	}
+	return Vector2i{ cell_i / grid_size.x, cell_i % grid_size.x };
+}
+
+BitGrid2D::HistogramResult BitGrid2D::compute_histogram(
+	Vector2i origin,
+	Vector2i size,
+	Direction anchor_dir,
+	int start_bar,
+	Vector2i wanted_size,
+	bool exit_on_wanted_found
+) const {
+	ERR_FAIL_COND_V_MSG(
+		origin.x < 0 || origin.x >= grid_size.x || origin.y < 0 || origin.y >= grid_size.y,
+		HistogramResult(), "origin out of bounds"
+	);
+	ERR_FAIL_COND_V_MSG(
+		wanted_size.x > size.x || wanted_size.y > size.y,
+		HistogramResult(), "exit_size larger than histogram size"
+	);
+	ERR_FAIL_COND_V_MSG(
+		wanted_size.x < 0 || wanted_size.y < 0, HistogramResult(), "negative exit size given"
+	);
+	ERR_FAIL_COND_V_MSG(
+		anchor_dir < Direction::UP || anchor_dir > Direction::RIGHT,
+		HistogramResult(), "invalid anchor direction"
+	);
+
+	const int bar_axis{ anchor_dir / 2 };
+	const int len_axis{ 1 - bar_axis };
+
+	ERR_FAIL_COND_V_MSG(
+		start_bar < 0 || start_bar > size[len_axis] - 1,
+		HistogramResult(), "start bar out of bounds"
+	);
+
+	bool get_wanted_size{ wanted_size.x > 0 && wanted_size.y > 0 };
+
+	const int bar_count{ size[bar_axis] };
+	const int bar_max_len{ size[len_axis] };
+
+	int start_cell_i{ origin.x + origin.y * grid_size.x };
+	if (bar_axis == Direction::RIGHT) {
+		start_cell_i += size.x - 1;
+	} else if (bar_axis == Direction::DOWN) {
+		const int size_cell_count{ size.x * size.y };
+		start_cell_i += size_cell_count - size.x;
+	}
+
+	const int bar_cell_advancement{ bar_axis == Axis::X ? 1 : grid_size.x };
+	const int len_polarity{ 1 - (anchor_dir % 2) * 2 };
+	const int len_cell_advancement{ (bar_axis == Axis::X ? grid_size.x : 1) * len_polarity };
+
+	const int end_bar{ (start_bar - 1 + bar_count) % bar_count };
+
+	PackedInt32Array hist;
+	hist.resize(bar_count);
+
+	int running_width{ 0 };
+	int wanted_cell_i{ -1 };
+
+	for (int bar_i{ start_bar }; bar_i != end_bar; bar_i = (bar_i + 1) % bar_count) {
+		int cell_i{ start_cell_i + bar_cell_advancement * bar_i };
+
+		int len_i{ 0 }; 
+		for (; len_i < bar_max_len; ++len_i) {
+			if (!(bitmap[cell_i / 8] >> (cell_i % 8) & 1)) {
+				break;
+			}
+			cell_i += len_cell_advancement;
+		}
+
+		if (get_wanted_size) {
+			if (len_i >= wanted_size[len_axis]) {
+				running_width += 1;
+			}
+			if (wanted_size[bar_axis] == running_width) {
+				const int exit_cell_count{ wanted_size.x * wanted_size.y };
+				get_wanted_size = false;
+				wanted_cell_i = cell_i - exit_cell_count;
+			}
+			if (exit_on_wanted_found) {
+				return HistogramResult{ wanted_cell_i, hist };
+			}
+		}
+
+		hist.set(bar_i, len_i);
+	}
+
+	return HistogramResult{ wanted_cell_i, hist };
 }
 
 int BitGrid2D::is_area_state(int start_cell_i, Vector2i size, bool get_unset) const {
