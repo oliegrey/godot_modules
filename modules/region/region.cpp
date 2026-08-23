@@ -236,6 +236,11 @@ Ref<Region> Region::create(
 	Vector2i _rand_length_addition,
 	Axis mirror_axes
 ) {
+	ERR_FAIL_COND_V_MSG(
+		_slot == Slot::SECONDARY && _joining_sides.size() > 0, Ref<Region>(),
+		"secondary region has no joining sides"
+	);
+
 	Ref<Region> region;
 
 	PackedInt32Array all_mirror_axes;
@@ -259,12 +264,12 @@ Ref<Region> Region::create(
 		region->g_size = _g_size;
 
 		for (int dir_i : _blocked_sides) {
-			dir_i = try_mirror_axis_dir_i(mirror_axes, dir_i);
+			dir_i = try_mirror_axis_dir_i(m_axis, dir_i);
 			region->blocked_sides.push_back(dir_i);
 		}
 		region->blocked_fill  = _blocked_fill;
 		for (int dir_i : _joining_sides) {
-			dir_i = try_mirror_axis_dir_i(mirror_axes, dir_i);
+			dir_i = try_mirror_axis_dir_i(m_axis, dir_i);
 			region->joining_sides.push_back(dir_i);
 		}
 
@@ -494,8 +499,14 @@ void Region::init_dominance_mask() {
 int Region::get_size_or_larger_i(uint64_t bitmap, const Vector2i size) {
 	uint64_t mask{ dominance_mask[size.x - 1][size.y - 1] };
 	const uint64_t masked_bitmap{ bitmap & mask };
-	if (masked_bitmap == 0) { return -1; }
+	if (masked_bitmap == 0) {
+		return -1;
+	}
 	return ctz64(masked_bitmap);
+}
+
+int Region::get_size_or_larger_i(uint64_t bitmap, const int cell_count) {
+	return get_size_or_larger_i(bitmap, Vector2i{ cell_count % 8, cell_count / 8 });
 }
 
 float Region::get_weight_sum_bounded(
@@ -527,38 +538,26 @@ int Region::rand_weighted_bound(
 }
 
 void Region::add_free_edge_gpos(
-	Vector2i gpos, Vector2i rand_g_size, DirEdge& dir_to_free_edge_gpos
+	Vector2i internal_gpos, Vector2i rand_g_size, DirEdge& dir_to_free_edge_gpos
 ) {
 	for (int dir{ 0 }; dir < Direction::DIRECTION_MAX; ++dir) {
 		if (blocked_sides.has(dir)) {
 			continue;
 		}
 
-		Vector2i edge_gpos{ gpos };
+		Vector2i edge_gpos{ internal_gpos };
 
 		if (dir == Direction::UP) {
 			edge_gpos.y -= 1;
-			if (blocked_sides.has(Direction::LEFT)) {
-				edge_gpos.x += 1;
-			}
 
 		} else if (dir == Direction::DOWN) {
 			edge_gpos.y += rand_g_size.y;
-			if (blocked_sides.has(Direction::LEFT)) {
-				edge_gpos.x += 1;
-			}
 
 		} else if (dir == Direction::LEFT) {
 			edge_gpos.x -= 1;
-			if (blocked_sides.has(Direction::UP)) {
-				edge_gpos.y += 1;
-			}
 
 		} else if (dir == Direction::RIGHT) {
 			edge_gpos.x += rand_g_size.x;
-			if (blocked_sides.has(Direction::UP)) {
-				edge_gpos.y += 1;
-			}
 		}
 
 		if (
@@ -583,7 +582,7 @@ void Region::generate_zone(
 	Ref<BitGrid2D> gen_occupancy{ pcg->generative_occupancy };
 
 	// how many secondaries we want
-	int target_secondary_count{ max_secondary_count }; //rng->randi_range(max_secondary_count / 4, max_secondary_count)
+	const int target_secondary_count{ max_secondary_count }; //rng->randi_range(max_secondary_count / 4, max_secondary_count)
 
 	// free grid position look up based on direction requirement; dir -> [free edge gpos, g_size, ...]
 	DirEdge dir_to_free_edge_gpos{};
@@ -618,10 +617,10 @@ void Region::generate_zone(
 	ERR_FAIL_COND(p_cell_i == -1);
 	auto p_gpos{ Vector2i(p_cell_i % m_seg_g_size.x, p_cell_i / m_seg_g_size.x) };
 
+	p_region->add_region(rng, pcg, p_gpos, rand_g_size, dir_to_free_edge_gpos);
 	if (is_debug) {
 		debug_region(p_gpos, rand_g_size_inc, p_region, w_seg);
 	}
-	p_region->add_region(rng, pcg, p_gpos, rand_g_size, dir_to_free_edge_gpos, w_seg);
 
 	// get threshold from ordered secondary regions to determine cutoff
 	uint64_t threshold_i{ 0 };
@@ -638,7 +637,7 @@ void Region::generate_zone(
 
 	// a tree to find grid positions that have needed free area sizes related to directions
 	// dir * max size in cells + size in cells -> grid position
-	std::array<PackedVector2Array, FLAT_TREE_SIZE> dir_size_to_gpos;
+	std::array<LocalVector<Vector2i>, FLAT_TREE_SIZE> dir_size_to_gpos;
 	std::array<uint64_t, Direction::DIRECTION_MAX> dir_size_occ{};
 
 	for (int i{ 0 }; i < target_secondary_count; ++i) {
@@ -665,171 +664,212 @@ void Region::generate_zone(
 		}
 	}
 
-	const int MAX_ATTEMPTS{ 4 };
+	//const int MAX_ATTEMPTS{ 4 };
 
-	RegionVector temp_rejects{};
+	//RegionVector temp_rejects{};
 
-	for (int attempt{ 0 }; attempt < MAX_ATTEMPTS; ++attempt) {
+	//for (int attempt{ 0 }; attempt < MAX_ATTEMPTS; ++attempt) {
 
-		if (attempt > 0) {
-			s_region_rejects = temp_rejects;
-		}
+	//	if (attempt > 0) {
+	//		s_region_rejects = temp_rejects;
+	//	}
 
-		temp_rejects.resize(0);
+	//	temp_rejects.resize(0);
 
-		for (Ref<Region> s_region: s_region_rejects) {
+	//	for (Ref<Region> s_region: s_region_rejects) {
 
-			bool success {
-				s_region->try_place_s_region(
-					rng,
-					dir_size_occ,
-					dir_size_to_gpos,
-					pcg,
-					dir_to_free_edge_gpos,
-					gen_occupancy,
-					w_seg
-				)
-			};
+	//		bool success {
+	//			s_region->try_place_s_region(
+	//				rng,
+	//				dir_size_occ,
+	//				dir_size_to_gpos,
+	//				pcg,
+	//				dir_to_free_edge_gpos,
+	//				gen_occupancy,
+	//				w_seg
+	//			)
+	//		};
 
-			if (!success) {
-				temp_rejects.push_back(s_region);
-			}
-		}
+	//		if (!success) {
+	//			temp_rejects.push_back(s_region);
+	//		}
+	//	}
 
-		if (temp_rejects.size() == s_region_rejects.size()) {
-			break; // impossible to get any more to place, no point retrying
-		}
+	//	if (temp_rejects.size() == s_region_rejects.size()) {
+	//		break; // impossible to get any more to place, no point retrying
+	//	}
+	//}
+}
+
+void Region::add_dir_size_to_gpos(
+	std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
+	std::array<LocalVector<Vector2i>, FLAT_TREE_SIZE> &dir_size_to_gpos,
+	const int req_dir_offset,
+	Direction req_dir,
+	const LocalVector<Rect2i> &areas,
+	int start_i
+) {
+	// there are now smaller areas
+	for (int i{ start_i }; i < static_cast<int>(areas.size()); ++i) {
+		const Rect2i &area{ areas[i] };
+		const int s_i{ get_size_i(area.size) };
+		ERR_FAIL_COND(s_i == -1);
+
+		dir_size_to_gpos[req_dir_offset + s_i].push_back(area.position);
+		dir_size_occ[req_dir] |= 1ull << s_i;
 	}
 }
 
-int Region::get_size_i(Vector2i size) {
-	const int size_i{ (size.x - 1) + (size.y - 1) * MAX_G_SIZE.x };
-	ERR_FAIL_INDEX_V(size_i, 64, -1);
-	return size_i;
+// returns whether the array is now empty
+bool Region::remove_edge(
+	LocalVector<Vector2i> &free_gpos_arr, int i, uint64_t &dir_occupancy, int size_cell_i
+) {
+	const int final_i{ free_gpos_arr.size() - 1 };
+
+	if (i != final_i) {
+		const Vector2i temp{ free_gpos_arr[final_i] };
+		free_gpos_arr[final_i] = free_gpos_arr[i];
+		free_gpos_arr[i] = temp;
+	}
+	free_gpos_arr.resize(final_i);
+	if (free_gpos_arr.size() == 0) {
+		dir_occupancy &= ~(1ull << size_cell_i);
+		return true;
+	}
+	return false;
+}
+
+// consumes edge if it is not free to use, adds new smaller areas if possible
+// removes the final free_gpos_arr element if not free
+bool Region::try_add_region_to_edge(
+	Direction dir,
+	Vector2i edge_gpos,
+	Vector2i _inclusive_g_size,
+	Ref<RandomNumberGenerator> rng,
+	Ref<BitGrid2D> gen_occupancy
+) {
+	// check that it is free (fast if it is free and prevents overlapping regions for rechecks)
+	BitGrid2D::Direction bit_dir{ static_cast<BitGrid2D::Direction>(dir) };
+	LocalVector<Rect2i> org_size{
+		gen_occupancy->find_largest_anchored_areas_in_area(
+			edge_gpos, _inclusive_g_size, bit_dir, rng, _inclusive_g_size
+		)
+	};
+
+	bool is_free{ org_size[0].size == _inclusive_g_size };
+
+	if (is_free) {
+		Vector2i dir_offset_gpos{ org_size[0].position };
+
+		// transform edge grid position to placement grid position
+		const Direction req_dir{ invert_direction(dir) };
+		if (req_dir == Direction::UP) {
+			dir_offset_gpos.y -= _inclusive_g_size.y - 1;
+		} else if (req_dir == Direction::LEFT) {
+			dir_offset_gpos.x -= _inclusive_g_size.x - 1;
+		}
+
+		add_region(rng, pcg, dir_offset_gpos, _inclusive_g_size, dir_to_free_edge_gpos);
+		if (is_debug) {
+			debug_region(dir_offset_gpos, required_size, this, w_seg);
+		}
+	}
+
+	// in every case, the edge is consumed
+	remove_edge(free_gpos_Arr, i, dir_occupancy, size_cell_i);
+
+	// if more than one free size found add all from the beginning or after exact match
+	if (org_size.size() > 1) {
+		const int start_i{ static_cast<int>(is_free) };
+		add_dir_size_to_gpos(
+			dir_size_occ, dir_size_to_gpos,
+			req_dir_offset, req_dir,
+			org_size, start_i
+		);
+	}
+
+	return is_free;
 }
 
 bool Region::try_place_s_region(
 	Ref<RandomNumberGenerator> rng,
 	std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
-	std::array<PackedVector2Array, FLAT_TREE_SIZE> &dir_size_to_gpos,
+	FlatDirSizeToGposArr &dir_size_to_gpos,
 	Ref<PCG> pcg,
 	DirEdge &dir_to_free_edge_gpos,
 	Ref<BitGrid2D> gen_occupancy,
 	int w_seg
 ) {
-	Vector2i length_addition{
-		rng->randi_range(0, rand_length_addition.x),
-		rng->randi_range(0, rand_length_addition.y)
-	};
-	Vector2i rand_g_size{ g_size + length_addition };
-	Vector2i rand_g_size_inc{ g_size_inclusive + length_addition };
+	bool is_success{ false };
 
-	const int64_t side_count{ joining_sides.size() };
-	int start_dir_i{ rng->randi_range(0, side_count - 1) };
+	Vector2i rand_g_size{ g_size };
+	Vector2i rand_g_size_inc{ g_size_inclusive };
+
+	if (rand_length_addition.x > 0) {
+		const int x_addition{ rng->randi_range(0, rand_length_addition.x) };
+		rand_g_size.x += x_addition;
+		rand_g_size_inc.x += x_addition;
+	}
+	if (rand_length_addition.y > 0) {
+		const int y_addition{ rng->randi_range(0, rand_length_addition.y) };
+		rand_g_size.y += y_addition;
+		rand_g_size_inc.y += y_addition;
+	}
+
+	const int64_t side_count{ joining_sides.size() }; // >0 sides enforced at creation
+	const int start_dir_i{ rng->randi_range(0, side_count - 1) };
 
 	for (int64_t dir_offset{ 0 }; dir_offset < side_count; ++dir_offset) {
-
-		int dir_i{ joining_sides[(start_dir_i + dir_offset) % side_count] };
-
-		Direction dir{ static_cast<Direction>(dir_i) };
-		Direction req_dir{ invert_direction(dir) };
+		const int wrapped_dir{ (start_dir_i + dir_offset) % side_count };
+		const int dir_i{ joining_sides[wrapped_dir] };
+		const Direction dir{ static_cast<Direction>(dir_i) };
+		const Direction req_dir{ invert_direction(dir) };
 
 		LocalVector<Edge> &free_edge_gpos{ dir_to_free_edge_gpos[req_dir] };
 
-		// look for it in the tree of already searched and catalogued areas
+		////////////////////////////////////////////////////////////////////////////
+		//// find >= current size in the tree of previously searched free sides ////
+		//// and check if they are still empty before placing                   ////
+		////////////////////////////////////////////////////////////////////////////
+
+		// find the first cached free side size that is >= required size
+		// try this side to ensure its free, if not then try the larger sizes
+		const uint64_t occupancy{ dir_size_occ[req_dir] };
+		const int min_cell_count{ rand_g_size_inc.x * rand_g_size_inc.y };
+
+		// flat packed direction array offsets
 		const int req_dir_offset{ req_dir * MAX_CELL_COUNT };
 
-		int size_i_fit{ };
-		PackedVector2Array *sized_gpos{ };
-		int64_t idx{ 0 };
-
-		constexpr int MAX_SAFE_ITERATIONS = 1000; // generous upper bound; real usage should terminate long before this
-
-		int safety_iter{ 0 };
-		for (; safety_iter < MAX_SAFE_ITERATIONS; ++safety_iter) {
-			if (idx <= 0) {
-				size_i_fit = get_size_or_larger_i(dir_size_occ[req_dir], rand_g_size_inc);
-				if (size_i_fit == -1) {
-					break;
-				}
-				sized_gpos = &dir_size_to_gpos[req_dir_offset + size_i_fit];
-				idx = sized_gpos->size();
-			}
-			--idx;
-			//warn_print(vformat("found size fit in already scanned for %s", s_region->name));
-			Vector2i gpos{ (*sized_gpos)[idx] };
-			Vector2i found_size{ (size_i_fit % MAX_G_SIZE.x) + 1, (size_i_fit / MAX_G_SIZE.x) + 1 };
-			if (dir == Direction::DOWN) {
-				gpos.y -= found_size.y - 1;
-			} else if (dir == Direction::RIGHT) {
-				gpos.x -= found_size.x - 1;
-			}
-			PackedVector2Array org_size{
-				gen_occupancy->find_anchored_unset_areas_in_bounds(
-					gpos,
-					found_size,
-					static_cast<BitGrid2D::Direction>(dir),
-					rng,
-					rand_g_size_inc
-				)
-			};
-			// edge is no longer empty for whatever reason
-			if (org_size.size() < 2) {
-				// edge cant be used so remove it
-				sized_gpos->set(idx, (*sized_gpos)[sized_gpos->size() - 1]);
-				sized_gpos->resize(sized_gpos->size() - 1);
-				if (sized_gpos->size() == 0) {
-					dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
-				}
-				continue;
-			}
-			// there is enough room
-			if (org_size.size() == 2 && org_size[1] == rand_g_size_inc) {
-				Vector2i dir_offset_gpos{ org_size[0] };
-				if (req_dir == Direction::UP) {
-					dir_offset_gpos.y -= rand_g_size_inc.y - 1;
-				} else if (req_dir == Direction::LEFT) {
-					dir_offset_gpos.x -= rand_g_size_inc.x - 1;
-				}
-				// is this even segment position, or is it in the search space in some way
-				if (is_debug) {
-					debug_region(dir_offset_gpos, rand_g_size_inc, this, w_seg);
-				}
-				add_region(
-					rng, pcg, dir_offset_gpos, rand_g_size, dir_to_free_edge_gpos, w_seg
-				);
-				// edge filled so remove it
-				sized_gpos->set(idx, (*sized_gpos)[sized_gpos->size() - 1]);
-				sized_gpos->resize(sized_gpos->size() - 1);
-				if (sized_gpos->size() == 0) {
-					dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
-				}
-				// edge is being used so remove it
-				return true;
-			}
-			// edge doesnt have this size anymore so remove it
-			sized_gpos->set(idx, (*sized_gpos)[sized_gpos->size() - 1]);
-			sized_gpos->resize(sized_gpos->size() - 1);
-			if (sized_gpos->size() == 0) {
-				dir_size_occ[req_dir] &= ~(1ull << size_i_fit);
+		// advance larger and larger until at the max or nothing is found
+		for (int cell_i{ min_cell_count }; cell_i < MAX_CELL_COUNT; ++cell_i) {
+			cell_i = get_size_or_larger_i(occupancy, cell_i);
+			if (cell_i == -1) {
+				break;
 			}
 
-			// there are now smaller areas
-			for (int i{ 0 }; i < org_size.size(); i += 2) {
-				Vector2i found_origin{ org_size[i] };
-				Vector2i found_size{ org_size[i + 1] };
-				const int s_i{ get_size_i(found_size) };
-				ERR_FAIL_COND_V(s_i == -1, false);
+			// for every free grid position at this size in this direction
+			const Vector2i free_size{ (cell_i % MAX_G_SIZE.x) + 1, (cell_i / MAX_G_SIZE.x) + 1 };
+			LocalVector<Vector2i> &free_gpos_arr{ dir_size_to_gpos[req_dir_offset + cell_i] };
 
-				dir_size_to_gpos[req_dir_offset + s_i].push_back(found_origin);
-				dir_size_occ[req_dir] |= 1ull << s_i;
+			// iterate backwards so we can safely remove items as we go
+			for (int i{ free_gpos_arr.size() }; i > 0; --i) {
+				
+				// get and move free grid position from region edge to potential placement position
+				Vector2i free_gpos{ free_gpos_arr[i] };
+				if (dir == Direction::DOWN) {
+					free_gpos.y -= free_size.y - 1;
+				} else if (dir == Direction::RIGHT) {
+					free_gpos.x -= free_size.x - 1;
+				}
+
+				const bool is_added{
+					try_add_region_to_edge(dir, free_gpos, rand_g_size_inc, rng, gen_occupancy)
+				};
 			}
 		}
 
-		if (safety_iter >= MAX_SAFE_ITERATIONS) {
-			ERR_PRINT(vformat("Region placement loop hit safety cap of %d iterations for %s — check for a logic bug in size/occupancy bookkeeping.", MAX_SAFE_ITERATIONS, name));
-		}
-
+		
+	// SAFETY ITERATIONS... 
 
 		// otherwise search possible areas
 		// iterate backwards so we can swap remove items from the end without issues
@@ -897,7 +937,6 @@ bool Region::try_place_s_region(
 					}
 				}
 
-
 			} else if (req_dir == Direction::RIGHT) {
 				if (prev_g_size.y == 1 && blocked_sides.has(Direction::UP)) {
 					search_size.y = 1;
@@ -912,20 +951,18 @@ bool Region::try_place_s_region(
 				}
 			}
 
-			//warn_print(vformat("search origin %s, search size %s", search_origin, search_size));
-
-			PackedVector2Array org_size{
-				gen_occupancy->find_anchored_unset_areas_in_bounds(
-					search_origin,
-					search_size,
-					static_cast<BitGrid2D::Direction>(dir),
-					rng,
-					rand_g_size_inc
+			////////////////////////////
+			//////// MOVE ME ///////////
+			////////////////////////////
+			BitGrid2D::Direction bit_dir{ static_cast<BitGrid2D::Direction>(dir) };
+			LocalVector<Rect2i> org_size{
+				gen_occupancy->find_largest_anchored_areas_in_area(
+					search_origin, search_size, bit_dir, rng, rand_g_size_inc
 				)
 			};
 
 			// edge is full
-			if (org_size.size() < 2) {
+			if (org_size.size() == 0) {
 				// edge cant be used so remove it
 				free_edge_gpos[gpos_i] = free_edge_gpos[free_edge_gpos.size() - 1];
 				free_edge_gpos.resize(free_edge_gpos.size() - 1);
@@ -933,8 +970,8 @@ bool Region::try_place_s_region(
 			}
 
 			// there is enough room
-			if (org_size.size() == 2 && org_size[1] == rand_g_size_inc) {
-				Vector2i dir_offset_gpos{ org_size[0] };
+			if (org_size[0].size == rand_g_size_inc) {
+				Vector2i dir_offset_gpos{ org_size[0].position };
 				if (dir == Direction::DOWN) {
 					dir_offset_gpos.y -= rand_g_size_inc.y - 1;
 				} else if (dir == Direction::RIGHT) {
@@ -948,26 +985,25 @@ bool Region::try_place_s_region(
 				if (is_debug) {
 					debug_region(dir_offset_gpos, rand_g_size_inc, this, w_seg);
 				}
-				add_region(
-					rng, pcg, dir_offset_gpos, rand_g_size, dir_to_free_edge_gpos, w_seg
-				);
+				add_region(rng, pcg, dir_offset_gpos, rand_g_size, dir_to_free_edge_gpos);
 
 				// edge is being used so remove it
+				if (org_size.size() > 1) {
+					add_dir_size_to_gpos(
+						dir_size_occ, dir_size_to_gpos,
+						req_dir_offset, req_dir,
+						org_size, 1
+					);
+				}
 				return true;
 			}
 
 			// we did not find enough room
-			for (int i{ 0 }; i < org_size.size(); i += 2) {
-				Vector2i found_origin{ org_size[i] };
-				Vector2i found_size{ org_size[i + 1] };
-
-				const int s_i{ get_size_i(found_size) };
-				ERR_FAIL_COND_V(s_i == -1, false);
-				dir_size_to_gpos[req_dir_offset + s_i].push_back(found_origin);
-				dir_size_occ[req_dir] |= 1ull << s_i;
-
-				//warn_print(vformat("set bit: %s, origin: %s, size %s", s_i, found_origin, found_size));
-			}
+			add_dir_size_to_gpos(
+				dir_size_occ, dir_size_to_gpos,
+				req_dir_offset, req_dir,
+				org_size, 0
+			);
 		}
 	}
 
@@ -977,30 +1013,25 @@ bool Region::try_place_s_region(
 void Region::add_region(
 	Ref<RandomNumberGenerator> rng,
 	Ref<PCG> pcg,
-	Vector2i gpos,
-	Vector2i rand_g_size,
-	DirEdge &dir_to_free_edge_gpos,
-	int w_seg
+	Vector2i external_gpos,
+	Vector2i _exclusive_g_size,
+	DirEdge &dir_to_free_edge_gpos
 ) {
-	Vector2i internal_gpos{ gpos };
-	if (blocked_sides.has(Direction::UP)) {
-		internal_gpos.y += 1;
-	}
-	if (blocked_sides.has(Direction::LEFT)) {
-		internal_gpos.x += 1;
-	}
+	Vector2i internal_gpos{
+		blocked_sides.has(Direction::LEFT) ? external_gpos.x + 1 : external_gpos.x,
+		blocked_sides.has(Direction::UP) ? external_gpos.y + 1 : external_gpos.y
+	};
 	
-	fill_blocked_edges(internal_gpos, rand_g_size, rng, pcg);
+	fill_blocked_edges(internal_gpos, _exclusive_g_size, rng, pcg);
 
-	pcg->add_tile_rect(
-		Tile::BACKGROUND * m_seg_cell_count, Tile::DUG, internal_gpos, rand_g_size, false, rng
-	);
+	const int layer_offset{ Tile::BACKGROUND * m_seg_cell_count };
+	pcg->add_tile_rect(layer_offset, Tile::DUG, internal_gpos, _exclusive_g_size, false, rng);
 
-	fill_internal(internal_gpos, rand_g_size, rng, pcg);
+	fill_internal(internal_gpos, _exclusive_g_size, rng, pcg);
 
-	pcg->generative_occupancy->set_area(internal_gpos, rand_g_size); // ensure dug doesnt get overwritten
+	pcg->generative_occupancy->set_area(internal_gpos, _exclusive_g_size); // ensure dug doesnt get overwritten
 
-	add_free_edge_gpos(gpos, rand_g_size, dir_to_free_edge_gpos);
+	add_free_edge_gpos(internal_gpos, _exclusive_g_size, dir_to_free_edge_gpos);
 }
 
 void Region::fill_internal(
@@ -1010,7 +1041,6 @@ void Region::fill_internal(
 	Ref<PCG> pcg
 ) {
 	for (const InternalChoiceSet &choice_sets : internal_choices) {
-
 
 		// weighted random choice
 		float rand_f{ rng->randf() };
@@ -1023,7 +1053,7 @@ void Region::fill_internal(
 		if (choice_i >= choice_sets.norm_weights.size()) {
 			choice_i = choice_sets.norm_weights.size() - 1;
 		}
-		ERR_FAIL_INDEX(choice_i, choice_sets.choice_set.size());
+		ERR_FAIL_INDEX(choice_i, static_cast<int>(choice_sets.choice_set.size()));
 		InternalEntry choice{ choice_sets.choice_set[choice_i] };
 
 		Vector2i seg_placement_gpos{ 0, 0 };
@@ -1061,12 +1091,12 @@ void Region::fill_internal(
 				limit.y = 1;
 			} else if (choice.gpos_alignment == A_DOWN) {
 				limit.y = 1;
-				offset_gpos.y += rand_g_size.y - 1;
+				offset_gpos.y += rand_g_size.y - choice.size.y;
 			} else if (choice.gpos_alignment == A_LEFT) {
 				limit.x = 1;
 			} else if (choice.gpos_alignment == A_RIGHT) {
 				limit.x = 1;
-				offset_gpos.x += rand_g_size.x - 1;
+				offset_gpos.x += rand_g_size.x - choice.size.x;
 			}
 
 			for (int x{ 0 }; x < limit.x; x += choice.size.x) {
@@ -1081,13 +1111,13 @@ void Region::fill_internal(
 			if (choice.gpos_alignment == A_NONE) {
 				seg_placement_gpos = rand_g_size / 2 - choice.size / 2;
 			} else if (choice.gpos_alignment == A_UP) {
-				seg_placement_gpos = Vector2i(rand_g_size.x / 2, 0);
+				seg_placement_gpos = Vector2i(rand_g_size.x / 2 - choice.size.x / 2, 0);
 			} else if (choice.gpos_alignment == A_DOWN) {
-				seg_placement_gpos = Vector2i(rand_g_size.x / 2, rand_g_size.y - choice.size.y);
+				seg_placement_gpos = Vector2i(rand_g_size.x / 2 - choice.size.x / 2, rand_g_size.y - choice.size.y);
 			} else if (choice.gpos_alignment == A_LEFT) {
-				seg_placement_gpos = Vector2i(0, rand_g_size.y / 2);
+				seg_placement_gpos = Vector2i(0, rand_g_size.y / 2 - choice.size.y / 2);
 			} else if (choice.gpos_alignment == A_RIGHT) {
-				seg_placement_gpos = Vector2i(rand_g_size.x - choice.size.x, rand_g_size.y / 2);
+				seg_placement_gpos = Vector2i(rand_g_size.x - choice.size.x, rand_g_size.y / 2 - choice.size.y / 2);
 			}
 
 		} else if (choice.placement == Placement::END) {
@@ -1112,8 +1142,8 @@ void Region::fill_internal(
 			else if (choice.gpos_alignment == A_RIGHT) { dir = BitGrid2D::RIGHT; }
 
 			Vector2i unset_gpos{
-				pcg->generative_occupancy->find_rand_anchored_unset_area_in_bounds(
-					rng, w_internal_gpos, rand_g_size, dir, choice.size
+				pcg->generative_occupancy->find_anchored_area_in_area(
+					w_internal_gpos, rand_g_size, dir, choice.size, rng 
 				)
 			};
 
@@ -1134,7 +1164,7 @@ void Region::fill_internal(
 			if (choice.gpos_alignment == A_DOWN) {
 				seg_placement_gpos.y += rand_g_size.y - choice.size.y;
 			}
-			else if (choice.gpos_alignment == A_LEFT) {
+			else if (choice.gpos_alignment == A_RIGHT) {
 				seg_placement_gpos.x += rand_g_size.x - choice.size.x;
 			}
 		}
@@ -1142,11 +1172,10 @@ void Region::fill_internal(
 	}
 }
 
-
 void Region::try_place_internal(
 	InternalEntry choice, Vector2i gpos, Ref<PCG> pcg, Ref<RandomNumberGenerator> rng
 ) {
-	if (!pcg->generative_occupancy->is_area_free(gpos, choice.size)) {
+	if (!pcg->generative_occupancy->is_area_state(gpos, choice.size)) {
 		return;
 	}
 	if (choice.type == InternalEntry::TYPE_CALLABLE) {
@@ -1154,117 +1183,6 @@ void Region::try_place_internal(
 	} else {
 		pcg->add_gpos_tile(choice.layer_offset, choice.tile_index, gpos, true, rng);
 	}
-}
-
-void Region::fill_blocked_edges(
-	Vector2i internal_gpos,
-	Vector2i rand_g_size,
-	Ref<RandomNumberGenerator> rng,
-	Ref<PCG> pcg
-) {
-	uint8_t corner_bitmap{ 0 };
-
-	for (int i{ 0 }; i < blocked_sides.size(); ++i) {
-		int dir{ blocked_sides[i] };
-		BlockedFill fill{ static_cast<BlockedFill>(blocked_fill[i]) };
-		Vector2i blocked_gpos{ internal_gpos };
-		Vector2i blocked_rect{ rand_g_size };
-
-		if (dir == Direction::UP) {
-			blocked_gpos -= Vector2i(0, 1);
-			blocked_rect.y = 1;
-			
-		} else if (dir == Direction::DOWN) {
-			blocked_gpos += Vector2i(0, rand_g_size.y);
-			blocked_rect.y = 1;
-
-		} else if (dir == Direction::LEFT) {
-			blocked_gpos -= Vector2i(1, 0);
-			blocked_rect.x = 1;
-
-		} else if (dir == Direction::RIGHT) {
-			blocked_gpos += Vector2i(rand_g_size.x, 0);
-			blocked_rect.x = 1;
-		}
-
-		corner_bitmap |= 1 << dir;
-		fill_blocked(fill, rng, pcg, blocked_gpos, blocked_rect);
-	}
-	if ((corner_bitmap & 0b0101) == 0b0101) { // fill top left corner
-		Vector2i blocked_gpos{ internal_gpos + Vector2i(-1, -1) };
-		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
-	}
-	if ((corner_bitmap & 0b0110) == 0b0110) { // fill bottom left corner
-		Vector2i blocked_gpos{ internal_gpos + Vector2i(-1, rand_g_size.y) };
-		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
-	}
-	if ((corner_bitmap & 0b1010) == 0b1010) { // fill bottom right corner
-		Vector2i blocked_gpos{ internal_gpos + rand_g_size };
-		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
-	}
-	if ((corner_bitmap & 0b1001) == 0b1001) { // fill top right corner
-		Vector2i blocked_gpos{ internal_gpos + Vector2i(rand_g_size.x, -1) };
-		fill_blocked(BlockedFill::ANY, rng, pcg, blocked_gpos, Vector2i(1, 1), true);
-	}
-}
-
-void Region::fill_blocked(
-	BlockedFill fill,
-	Ref<RandomNumberGenerator> rng,
-	Ref<PCG> pcg,
-	const Vector2i gpos,
-	const Vector2i rect,
-	const bool skip_dirt
-) {
-	if (fill == BlockedFill::ANY) {
-		fill = static_cast<BlockedFill>(rng->randi_range(0, 2));
-	}
-	else if (fill == BlockedFill::ANY_STONE) {
-		fill = static_cast<BlockedFill>(rng->randi_range(1, 2));
-	}
-
-	if (fill == BlockedFill::DIRT && skip_dirt) {
-		return;
-	}
-	else if (fill == BlockedFill::MIX) {
-		int total_cells{ rect.x * rect.y };
-		int required_rand_chunks{ static_cast<int>(ceil(total_cells / 32.0)) };
-		for (int rand_chunk_i{ 0 }; rand_chunk_i < required_rand_chunks; ++rand_chunk_i) {
-			uint32_t bitmap{ rng->randi() };
-			for (int bitmap_pos{ 0 }; bitmap_pos < 32; ++bitmap_pos) {
-				bool is_set{ static_cast<bool>(bitmap & (1 << bitmap_pos)) };
-				fill = is_set ? BlockedFill::DIRT : BlockedFill::STONE;
-				int total_offset{ bitmap_pos + rand_chunk_i * 32 };
-				if (total_offset >= total_cells) {
-					break;
-				}
-				Vector2i rect_offset{ total_offset % rect.x, total_offset / rect.x };
-				Vector2i offset_gpos{ gpos + rect_offset };
-				fill_blocked_rect(fill, rng, pcg, offset_gpos, Vector2i(1, 1));
-			}
-		}
-	} else {
-		fill_blocked_rect(fill, rng, pcg, gpos, rect);
-	}
-}
-
-void Region::fill_blocked_rect(
-	BlockedFill fill,
-	Ref<RandomNumberGenerator> rng,
-	Ref<PCG> pcg,
-	const Vector2i gpos,
-	const Vector2i rect
-) {
-	int tile_i{ 0 };
-	if (fill == BlockedFill::DIRT) {
-		tile_i = Tile::get_tile(Tile::DIRT)->get_variation(rng)->tile;
-	}
-	if (fill == BlockedFill::STONE) {
-		tile_i = Tile::get_tile(Tile::ROCK)->get_variation(rng)->tile;
-	}
-	const int offset{ Tile::Layer::COLLISION * m_seg_cell_count };
-
-	pcg->add_tile_rect(offset, tile_i, gpos, rect, true, rng);
 }
 
 void Region::debug_region(Vector2i gpos, Vector2i rand_g_size_inc, Ref<Region> region, int w_seg) {
@@ -1324,3 +1242,4 @@ String Region::get_internal_choices_debug() const {
 
 	return out;
 }
+

@@ -10,12 +10,28 @@ class Region;
 class RandomNumberGenerator;
 class PCG;
 class BitGrid2D;
+class Tile;
 
 class Region : public RefCounted {
 	GDCLASS(Region, RefCounted);
 
 public:
-	struct Edge { Vector2i gpos; Vector2i size; };
+	inline static constexpr int MAX_G_SIZE_X{ 8 };
+	inline static constexpr int MAX_G_SIZE_Y{ 8 };
+	inline static constexpr int MAX_CELL_COUNT{ 64 }; // occupancy bitmap size alias
+
+	enum Slot { PRIMARY, SECONDARY };
+	enum Direction {
+		NONE = -1,
+		UP = 0,
+		DOWN = 1,
+		LEFT = 2,
+		RIGHT = 3,
+		DIRECTION_MAX = 4
+	};
+	enum Axis { NO_AXES, X, Y, ALL_AXES };
+	enum Placement { RANDOM, CENTER, START, END, FILL, FORCE_GPOS };
+	enum BlockedFill { DIRT, STONE, MIX, ANY, ANY_STONE };
 
 	struct InternalEntry {
 		enum Type { TYPE_CALLABLE, TYPE_TILE_REF };
@@ -66,18 +82,11 @@ public:
 		PackedFloat32Array norm_weights;
 	};
 
-	enum Slot { PRIMARY, SECONDARY };
-	enum Direction {
-		NONE = -1,
-		UP = 0,
-		DOWN = 1,
-		LEFT = 2,
-		RIGHT = 3,
-		DIRECTION_MAX = 4
+	struct BlockedSide {
+		Direction 
 	};
-	enum Axis { NO_AXES, X, Y, ALL_AXES };
-	enum Placement { RANDOM, CENTER, START, END, FILL, FORCE_GPOS };
-	enum BlockedFill { DIRT, STONE, MIX, ANY, ANY_STONE };
+
+	
 
 	inline static const Vector2i A_NONE{ 0, 0 };
 	inline static const Vector2i A_UP{ 0, 1 };
@@ -87,14 +96,6 @@ public:
 
 private:
 	using RegionVector = LocalVector<Ref<Region>>;
-	using DirEdge = std::array<LocalVector<Edge>, Direction::DIRECTION_MAX>;
-
-	inline static const Vector2i MAX_G_SIZE{ Vector2i(8, 8) };
-	inline static const int MAX_CELL_COUNT{ 64 };
-	inline static const int FLAT_TREE_SIZE{ MAX_CELL_COUNT * Direction::DIRECTION_MAX };
-
-	inline static Vector2i m_seg_g_size;
-	inline static int m_seg_cell_count;
 
 	// attachment direction (already placed regions perspective) [0 - 3] -> region
 	// to get a random region to test in a free direction
@@ -106,13 +107,10 @@ private:
 	inline static RegionVector m_primary_regions{};
 	inline static PackedFloat32Array m_primary_weights{};
 	inline static float m_primary_weight_sum{};
+
 	// ordered by threshold so its easy to iterate within bounds
 	inline static RegionVector m_secondary_regions{};
 	inline static PackedFloat32Array m_secondary_weights{};
-
-	inline static bool is_debug;
-
-	inline static std::array<std::array<uint64_t, 8>, 8> dominance_mask;
 
 public:
 	inline static const Vector2i NOT_SET{ -9999, -9999 };
@@ -121,10 +119,12 @@ public:
 	Slot slot;
 	Vector2i g_size;
 
-	PackedInt32Array blocked_sides;
-	PackedInt32Array blocked_fill;
+	LocalVector<int> blocked_sides;
+	LocalVector<int> blocked_fill;
+	LocalVector<Ref<Tile>> blocked_tiles;
 
-	PackedInt32Array joining_sides;
+	LocalVector<int> joining_sides;
+
 	float spawn_weight;
 	int threshold;
 	Vector2i g_size_inclusive; // includes stone sides
@@ -133,6 +133,39 @@ public:
 	LocalVector<InternalChoiceSet> internal_choices;
 
 private:
+	static void debug_region(
+		Vector2i gpos, Vector2i rand_g_size, Ref<Region> region, int w_seg
+	);
+
+	bool remove_edge(
+		LocalVector<Vector2i> &free_gpos_arr, int i, uint64_t &dir_occupancy, int size_cell_i
+	);
+
+	bool try_add_region_to_edge(
+		Direction dir,
+		Vector2i edge_gpos,
+		Vector2i required_size,
+		Ref<RandomNumberGenerator> rng,
+		Ref<BitGrid2D> gen_occupancy
+	);
+
+	void try_place_internal(
+		InternalEntry choice, Vector2i gpos, Ref<PCG> pcg, Ref<RandomNumberGenerator> rng
+	);
+
+	void add_dir_size_to_gpos(
+		std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
+		FlatDirSizeToGposArr &dir_size_to_gpos,
+		const int req_dir_offset,
+		Direction req_dir,
+		const LocalVector<Rect2i> &areas,
+		int start_i
+	);
+
+protected:
+	static void _bind_methods();
+
+public:
 	static Direction invert_direction(Direction direction) {
 		switch (direction) {
 			case Direction::UP:       return Direction::DOWN;
@@ -142,79 +175,6 @@ private:
 			default:                  return Direction::NONE;
 		}
 	}
-
-	static void init_dominance_mask();
-
-	static int get_size_or_larger_i(uint64_t bitmap, const Vector2i size);
-
-	void add_free_edge_gpos(
-		Vector2i gpos, Vector2i rand_g_size, DirEdge &dir_to_free_edge_gpos
-	);
-
-	void add_region(
-		Ref<RandomNumberGenerator> rng,
-		Ref<PCG> pcg,
-		Vector2i gpos,
-		Vector2i rand_g_size,
-		DirEdge &dir_to_free_edge_gpos,
-		int w_seg
-	);
-
-	bool try_place_s_region(
-		Ref<RandomNumberGenerator> rng,
-		std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
-		std::array<PackedVector2Array, FLAT_TREE_SIZE> &dir_size_to_gpos,
-		Ref<PCG> pcg,
-		DirEdge &dir_to_free_edge_gpos,
-		Ref<BitGrid2D> gen_occupancy,
-		int w_seg
-	);
-
-	static void debug_region(
-		Vector2i gpos, Vector2i rand_g_size, Ref<Region> region, int w_seg
-	);
-
-	static int get_size_i(Vector2i size);
-
-	static void fill_blocked(
-		BlockedFill fill,
-		Ref<RandomNumberGenerator> rng,
-		Ref<PCG> pcg,
-		const Vector2i gpos,
-		const Vector2i rect,
-		const bool skip_dirt = false
-	);
-
-	static void fill_blocked_rect(
-		BlockedFill fill,
-		Ref<RandomNumberGenerator> rng,
-		Ref<PCG> pcg,
-		const Vector2i gpos,
-		const Vector2i rect
-	);
-
-	void fill_blocked_edges(
-		Vector2i internal_gpos,
-		Vector2i rand_g_size,
-		Ref<RandomNumberGenerator> rng,
-		Ref<PCG> pcg
-	);
-
-	void fill_internal(
-		Vector2i internal_gpos,
-		Vector2i rand_g_size,
-		Ref<RandomNumberGenerator> rng,
-		Ref<PCG> pcg
-	);
-
-	void try_place_internal(
-		InternalEntry choice, Vector2i gpos, Ref<PCG> pcg, Ref<RandomNumberGenerator> rng
-	);
-
-protected:
-	static void _bind_methods();
-
-public:
 	static Vector2i ALIGN_NONE();
 	static Vector2i ALIGN_UP();
 	static Vector2i ALIGN_DOWN();
@@ -261,6 +221,35 @@ public:
 		Ref<PCG> pcg,
 		const int w_seg,
 		const int max_secondary_count
+	);
+
+	void fill_internal(
+		Vector2i internal_gpos,
+		Vector2i rand_g_size,
+		Ref<RandomNumberGenerator> rng,
+		Ref<PCG> pcg
+	);
+
+	void add_free_edge_gpos(
+		Vector2i gpos, Vector2i rand_g_size, DirEdge &dir_to_free_edge_gpos
+	);
+
+	void add_region(
+		Ref<RandomNumberGenerator> rng,
+		Ref<PCG> pcg,
+		Vector2i external_gpos,
+		Vector2i _exclusive_g_size,
+		DirEdge &dir_to_free_edge_gpos
+	);
+
+	bool try_place_s_region(
+		Ref<RandomNumberGenerator> rng,
+		std::array<uint64_t, Direction::DIRECTION_MAX> &dir_size_occ,
+		FlatDirSizeToGposArr &dir_size_to_gpos,
+		Ref<PCG> pcg,
+		DirEdge &dir_to_free_edge_gpos,
+		Ref<BitGrid2D> gen_occupancy,
+		int w_seg
 	);
 
 	static float get_weight_sum_bounded(

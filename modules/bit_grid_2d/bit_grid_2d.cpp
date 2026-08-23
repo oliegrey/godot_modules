@@ -56,8 +56,10 @@ void BitGrid2D::_bind_methods() {
 		D_METHOD("set_area", "origin", "size"), &BitGrid2D::set_area
 	);
 	ClassDB::bind_method(
-		D_METHOD("is_area_free", "origin", "size"), &BitGrid2D::is_area_free
+		D_METHOD("is_area_state", "origin", "size", "is_set"),
+		&BitGrid2D::is_area_state, DEFVAL(false)
 	);
+
 	ClassDB::bind_method(
 		D_METHOD(
 			"find_cell_in_state",
@@ -80,17 +82,6 @@ void BitGrid2D::_bind_methods() {
 		),
 		&BitGrid2D::find_area_in_grid,
 		DEFVAL(true)
-	);
-	ClassDB::bind_method(
-		D_METHOD(
-			"find_anchored_unset_areas_in_bounds",
-			"origin",
-			"search_size",
-			"anchor_dir",
-			"rng",
-			"wanted_size"
-		),
-		&BitGrid2D::find_anchored_unset_areas_in_bounds, DEFVAL(Vector2i())
 	);
 
 	ClassDB::bind_method(
@@ -265,7 +256,9 @@ void BitGrid2D::set_area(const Vector2i origin, const Vector2i size) {
 	}
 }
 
-bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
+bool BitGrid2D::is_area_state(
+	const Vector2i origin, const Vector2i size, const bool is_set
+) const {
 	ERR_FAIL_COND_V_MSG(
 		size.x <= 0 || size.y <= 0, false, "provided size is zero area"
 	);
@@ -274,11 +267,13 @@ bool BitGrid2D::is_area_free(const Vector2i origin, const Vector2i size) const {
 		"provided origin + size out of grid bounds"
 	);
 
+	const int required_state{ static_cast<int>(is_set) };
+
 	for (int y{ origin.y }; y < origin.y + size.y; y++) {
 		for (int x{ origin.x }; x < origin.x + size.x; x++) {
 			const int cell_i{ gpos_to_cell_i(Vector2i(x, y)) };
-
-			if ((bitmap[cell_i / 8] >> (cell_i % 8)) & 1) {
+			const int bit{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
+			if (bit != required_state) {
 				return false;
 			}
 		}
@@ -517,7 +512,7 @@ int BitGrid2D::find_area_in_grid(
 		cell_i = find_cell_in_state(end_cell_inc, cell_i, get_unset);
 		if (cell_i == -1) { return -1; } // no possible areas left
 
-		int cell_advancement{ is_area_state(cell_i, size, get_unset) };
+		int cell_advancement{ is_area_cell_state(cell_i, size, get_unset) };
 		if (cell_advancement == -1) { return cell_i; } // area found
 
 		i += cell_advancement;
@@ -526,7 +521,6 @@ int BitGrid2D::find_area_in_grid(
 	return -1;
 }
 
-
 LocalVector<Rect2i> BitGrid2D::find_largest_anchored_areas_in_area(
 	Vector2i origin,
 	Vector2i search_size,
@@ -534,50 +528,143 @@ LocalVector<Rect2i> BitGrid2D::find_largest_anchored_areas_in_area(
 	Ref<RandomNumberGenerator> rng,
 	Vector2i wanted_size
 ) const {
+	if (!clamp_search_area(origin, search_size)) {
+		return LocalVector<Rect2i>();
+	}
+
+	const int anchor_axis{ anchor_dir / 2 };
+	const int len_axis{ 1 - anchor_axis };
+
 	const int start_bar{
-		rng == Ref<RandomNumberGenerator>() ? 0 : rng->randi_range(0, search_size.x)
+		rng == Ref<RandomNumberGenerator>() ?
+		0 : rng->randi_range(0, search_size[anchor_axis] - 1)
 	};
 	HistogramResult hist{
 		compute_histogram(origin, search_size, anchor_dir, start_bar, wanted_size, false)
 	};
 	PackedInt32Array &histogram{ hist.histogram };
-	LocalVector<Rect2i> areas;
+	LocalVector<Rect2i> largest_quads;
 
-	if (hist.wanted_cell_i != -1) {
+	// if the wanted size was found, add it to the results and remove from histogram
+	const int is_wanted_size_found{ static_cast<int>(hist.wanted_cell_i != -1) };
+
+	if (is_wanted_size_found) {
 		const int cell_i{ hist.wanted_cell_i };
-		areas.push_back(
-			Rect2i{ Vector2i{ cell_i / grid_size.x, cell_i % grid_size.x}, wanted_size }
-		);
+		const Vector2i largest_quad_gpos{ cell_i % grid_size.x, cell_i / grid_size.x };
+		largest_quads.push_back(Rect2i{ largest_quad_gpos, wanted_size });
 
-		int bar_i{ anchor_dir <= Direction::DOWN ? cell_i : cell_i / grid_size.x };
-		int end_bar_i{ bar_i + wanted_size[anchor_dir / 2] };
+		int bar_i{ largest_quad_gpos[anchor_axis] - origin[anchor_axis] };
+		int end_bar_i{ bar_i + wanted_size[anchor_axis] };
 		for (; bar_i < end_bar_i; ++bar_i) {
-			histogram.remove_at(bar_i);
+			histogram.set(bar_i, 0);
 		}
 	}
 
-	// go until you hit a zero and add them in order
-	// work out the area under each length
+	// construct the ranges of bars in which to find the largest quads
+	LocalVector<Vector2i> i_ranges;
+	int start_i{ -1 };
+
+	for (int i{ 0 }; i < histogram.size(); ++i) {
+		if (histogram[i] <= 0) {
+			if (start_i != -1) {	
+				i_ranges.push_back(Vector2i{ start_i, i });
+				start_i = -1;
+			}
+		}
+		else if (start_i == -1) {
+			start_i = i;
+		}
+	}
+	if (start_i != -1) {
+		i_ranges.push_back(Vector2i{ start_i, static_cast<int>(histogram.size()) });
+	}
+
+	// initialize the final results array with anchor positions pre loaded
+	largest_quads.resize(is_wanted_size_found + i_ranges.size());
+
+	if (anchor_dir == Direction::DOWN || anchor_dir == Direction::RIGHT) {
+		const int anchor_axis_gpos{ origin[len_axis] + search_size[len_axis] - 1 };
+		for (int i{ is_wanted_size_found }; i < static_cast<int>(largest_quads.size()); ++i) {
+			largest_quads[i].position[len_axis] = anchor_axis_gpos;
+		}
+	} else {
+		for (int i{ is_wanted_size_found }; i < static_cast<int>(largest_quads.size()); ++i) {
+			largest_quads[i].position[len_axis] = origin[len_axis];
+		}
+	}
+
+	// search left and right from a bar until hitting a smaller bar and get the quad size
+	for (int quad_i{ is_wanted_size_found }; quad_i < static_cast<int>(largest_quads.size()); ++quad_i) {
+		const Vector2i i_range{ i_ranges[quad_i - is_wanted_size_found] };
+		const int start_i{ i_range.x };
+		const int end_i{ i_range.y };
+		const int range_size{ end_i - start_i };
+		int largest_quad_cell_count{ 0 };
+
+		for (int i{ 0 }; i < range_size; ++i) {
+			const int quad_height{ histogram[start_i + i] };
+
+			int left_i{ i - 1 };
+			while(left_i > -1) {
+				const int left_height{ histogram[start_i + left_i] };
+				if (left_height < quad_height) {
+					break;
+				}
+				--left_i;
+			}
+
+			int right_i{ i + 1 };
+			while(right_i < range_size) {
+				const int right_height{ histogram[start_i + right_i] };
+				if (right_height < quad_height) {
+					break;
+				}
+				++right_i;
+			}
+
+			const int quad_width{ right_i - left_i - 1 };
+
+			const int quad_cell_count{ quad_height * quad_width };
+
+			if (quad_cell_count > largest_quad_cell_count) {
+				largest_quad_cell_count = quad_cell_count;
+
+				largest_quads[quad_i].size[anchor_axis] = quad_width;
+				largest_quads[quad_i].size[len_axis] = quad_height;
+				largest_quads[quad_i].position[anchor_axis] = (
+					start_i + left_i + 1 + origin[anchor_axis]
+				);
+			}
+		}
+	}
+
+	return largest_quads;
 }
 
 Vector2i BitGrid2D::find_anchored_area_in_area(
 	Vector2i origin,
 	Vector2i search_size,
 	Direction anchor_dir,
-	Ref<RandomNumberGenerator> rng,
-	Vector2i wanted_size
+	Vector2i wanted_size,
+	Ref<RandomNumberGenerator> rng
 ) const {
+	if (!clamp_search_area(origin, search_size)) {
+		return NOT_SET;
+	}
+
+	const int anchor_axis{ anchor_dir / 2 };
 	const int start_bar{
-		rng == Ref<RandomNumberGenerator>() ? 0 : rng->randi_range(0, search_size.x)
+		rng == Ref<RandomNumberGenerator>() ?
+		0 : rng->randi_range(0, search_size[anchor_axis] - 1)
 	};
 	HistogramResult hist{
 		compute_histogram(origin, search_size, anchor_dir, start_bar, wanted_size, true)
 	};
 	const int cell_i{ hist.wanted_cell_i };
 	if (cell_i == -1) {
-		return Vector2i{ -9999, -9999 };
+		return NOT_SET;
 	}
-	return Vector2i{ cell_i / grid_size.x, cell_i % grid_size.x };
+	return Vector2i{ cell_i % grid_size.x, cell_i / grid_size.x };
 }
 
 BitGrid2D::HistogramResult BitGrid2D::compute_histogram(
@@ -589,15 +676,16 @@ BitGrid2D::HistogramResult BitGrid2D::compute_histogram(
 	bool exit_on_wanted_found
 ) const {
 	ERR_FAIL_COND_V_MSG(
-		origin.x < 0 || origin.x >= grid_size.x || origin.y < 0 || origin.y >= grid_size.y,
+		origin.x < 0 || origin.y < 0,
+		HistogramResult(), "negative origin"
+	);
+	ERR_FAIL_COND_V_MSG(
+		origin.x >= grid_size.x || origin.y >= grid_size.y,
 		HistogramResult(), "origin out of bounds"
 	);
 	ERR_FAIL_COND_V_MSG(
-		wanted_size.x > size.x || wanted_size.y > size.y,
-		HistogramResult(), "exit_size larger than histogram size"
-	);
-	ERR_FAIL_COND_V_MSG(
-		wanted_size.x < 0 || wanted_size.y < 0, HistogramResult(), "negative exit size given"
+		wanted_size.x < 0 || wanted_size.y < 0,
+		HistogramResult(), "negative exit size given"
 	);
 	ERR_FAIL_COND_V_MSG(
 		anchor_dir < Direction::UP || anchor_dir > Direction::RIGHT,
@@ -608,22 +696,25 @@ BitGrid2D::HistogramResult BitGrid2D::compute_histogram(
 	const int len_axis{ 1 - bar_axis };
 
 	ERR_FAIL_COND_V_MSG(
-		start_bar < 0 || start_bar > size[len_axis] - 1,
+		start_bar < 0 || start_bar > size[bar_axis] - 1,
 		HistogramResult(), "start bar out of bounds"
 	);
 
-	bool get_wanted_size{ wanted_size.x > 0 && wanted_size.y > 0 };
+	bool get_wanted_size{
+		wanted_size.x > 0 && wanted_size.y > 0 &&
+		wanted_size.x <= size.x && wanted_size.y <= size.y
+	};
 
-	const int bar_count{ size[bar_axis] };
-	const int bar_max_len{ size[len_axis] };
+	const int bar_count{ MIN(size[bar_axis], grid_size[bar_axis] - origin[bar_axis]) };
+	const int bar_max_len{ MIN(size[len_axis], grid_size[len_axis] - origin[len_axis]) };
 
-	int start_cell_i{ origin.x + origin.y * grid_size.x };
-	if (bar_axis == Direction::RIGHT) {
-		start_cell_i += size.x - 1;
-	} else if (bar_axis == Direction::DOWN) {
-		const int size_cell_count{ size.x * size.y };
-		start_cell_i += size_cell_count - size.x;
+	Vector2i anchor_origin{ origin };
+	if (anchor_dir == Direction::RIGHT) {
+		anchor_origin.x += size.x - 1;
+	} else if (anchor_dir == Direction::DOWN) {
+		anchor_origin.y += size.y - 1;
 	}
+	int start_cell_i{ anchor_origin.x + anchor_origin.y * grid_size.x };
 
 	const int bar_cell_advancement{ bar_axis == Axis::X ? 1 : grid_size.x };
 	const int len_polarity{ 1 - (anchor_dir % 2) * 2 };
@@ -635,40 +726,53 @@ BitGrid2D::HistogramResult BitGrid2D::compute_histogram(
 	hist.resize(bar_count);
 
 	int running_width{ 0 };
+	int running_cell_start_i{ 0 };
 	int wanted_cell_i{ -1 };
 
-	for (int bar_i{ start_bar }; bar_i != end_bar; bar_i = (bar_i + 1) % bar_count) {
-		int cell_i{ start_cell_i + bar_cell_advancement * bar_i };
+	// wrapping loop across every bar index in the search size
+	for (int i{ 0 }; i < bar_count; ++i) {
+		const int bar_i{ (start_bar + i) % bar_count };
 
+		const int bar_start_cell_i{ start_cell_i + bar_cell_advancement * bar_i };
 		int len_i{ 0 }; 
 		for (; len_i < bar_max_len; ++len_i) {
-			if (!(bitmap[cell_i / 8] >> (cell_i % 8) & 1)) {
+			const int cell_i{ bar_start_cell_i + len_cell_advancement * len_i };
+			const int byte_i{ cell_i / 8 };
+			ERR_FAIL_INDEX_V(byte_i, bitmap.size(), HistogramResult{});
+			if (bitmap[byte_i] >> (cell_i % 8) & 1) {
 				break;
 			}
-			cell_i += len_cell_advancement;
 		}
-
-		if (get_wanted_size) {
-			if (len_i >= wanted_size[len_axis]) {
-				running_width += 1;
-			}
-			if (wanted_size[bar_axis] == running_width) {
-				const int exit_cell_count{ wanted_size.x * wanted_size.y };
-				get_wanted_size = false;
-				wanted_cell_i = cell_i - exit_cell_count;
-			}
-			if (exit_on_wanted_found) {
-				return HistogramResult{ wanted_cell_i, hist };
-			}
-		}
-
 		hist.set(bar_i, len_i);
+
+		if (!get_wanted_size) {
+			continue;
+		}
+		if (len_i < wanted_size[len_axis]) {
+			running_width = 0;
+			continue;
+		}
+		if (bar_i == 0) {
+			running_width = 0;
+		}
+		if (running_width == 0) {
+			running_cell_start_i = bar_start_cell_i;
+		}
+		running_width += 1;
+
+		if (wanted_size[bar_axis] == running_width) {
+			get_wanted_size = false;
+			wanted_cell_i = running_cell_start_i;
+			if (exit_on_wanted_found) {
+				break;
+			}
+		}
 	}
 
 	return HistogramResult{ wanted_cell_i, hist };
 }
 
-int BitGrid2D::is_area_state(int start_cell_i, Vector2i size, bool get_unset) const {
+int BitGrid2D::is_area_cell_state(int start_cell_i, Vector2i size, bool get_unset) const {
 	const int start_x{ start_cell_i % grid_size.x };
 	const int start_y{ start_cell_i / grid_size.x };
 

@@ -27,10 +27,21 @@ private:
 	int cell_count;
 	PackedByteArray bitmap;
 
+public:
+	inline static const Vector2i NOT_SET{ -9999, -9999 };
+
 private:
 	int gpos_to_cell_i(const Vector2i gpos) const;
-	int is_area_state(int start_cell_i, Vector2i size, bool get_unset) const;
+	int is_area_cell_state(int start_cell_i, Vector2i size, bool get_unset) const;
 	bool clamp_search_area(Vector2i &origin, Vector2i &search_size) const;
+	HistogramResult compute_histogram(
+		Vector2i origin,
+		Vector2i size,
+		Direction anchor_dir,
+		int start_bar = 0,
+		Vector2i wanted_size = Vector2i(0, 0),
+		bool exit_on_wanted_found = false
+	) const;
 
 protected:
 	static void _bind_methods();
@@ -54,17 +65,11 @@ public:
 	void set_cell_i(const int cell_i);
 	void unset_cell_i(const int cell_i);
 
-	bool is_area_free(const Vector2i origin, const Vector2i) const;
-	void set_area(const Vector2i gpos, const Vector2i size);
-
-	HistogramResult compute_histogram(
-		Vector2i origin,
-		Vector2i size,
-		Direction anchor_dir,
-		int start_bar = 0,
-		Vector2i wanted_size = Vector2i(0, 0),
-		bool exit_on_wanted_found = false
+	bool is_area_state(
+		const Vector2i origin, const Vector2i size, const bool is_set = false
 	) const;
+
+	void set_area(const Vector2i gpos, const Vector2i size);
 
 	Vector2i find_rand_anchored_unset_area_in_bounds(
 		Ref<RandomNumberGenerator> rng,
@@ -114,17 +119,17 @@ public:
 		Vector2i origin,
 		Vector2i search_size,
 		Direction anchor_dir,
-		Ref<RandomNumberGenerator> rng,
-		Vector2i wanted_size
+		Vector2i wanted_size,
+		Ref<RandomNumberGenerator> rng = Ref<RandomNumberGenerator>()
 	) const;
 
 	LocalVector<Rect2i> find_largest_anchored_areas_in_area(
 		Vector2i origin,
 		Vector2i search_size,
 		Direction anchor_dir,
-		Ref<RandomNumberGenerator> rng,
-		Vector2i wanted_size
-	) const
+		Ref<RandomNumberGenerator> rng = Ref<RandomNumberGenerator>(),
+		Vector2i wanted_size = Vector2i(0, 0)
+	) const;
 };
 
 VARIANT_ENUM_CAST(BitGrid2D::Direction);

@@ -180,6 +180,9 @@ void PCG::_bind_methods() {
 		&PCG::randi_range_exp,
 		DEFVAL(0)
 	);
+
+	BIND_ENUM_CONSTANT(PICK_ONE);
+	BIND_ENUM_CONSTANT(MIX);
 }
 
 Ref<PCG> PCG::create(Vector2i segment_grid_size, int w_seg, bool is_server) {
@@ -337,12 +340,12 @@ void PCG::add_tile_rect(
 	int layer_offset,
 	int tile_i,
 	Vector2i seg_gpos,
-	Vector2i g_size,
+	Vector2i rect,
 	bool add_occupancy,
 	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
-	for (int y{ 0 }; y < g_size.y; ++y) {
-		for (int x{ 0 }; x < g_size.x; ++x) {
+	for (int y{ 0 }; y < rect.y; ++y) {
+		for (int x{ 0 }; x < rect.x; ++x) {
 			const Vector2i gpos{ seg_gpos + Vector2i(x, y) };
 			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy, tile_variation_rng);
 		}
@@ -603,4 +606,43 @@ int PCG::randi_range_exp(Ref<RandomNumberGenerator> rng, int max, int min) {
 	}
 
 	return min + n;
+}
+
+/////////////////////////////////
+
+void PCG::rand_fill_rect(
+	Ref<RandomNumberGenerator> rng,
+	FillType fill_type,
+	LocalVector<int> tiles_i,
+	LocalVector<int> layer_offsets,
+	Rect2i rect,
+	bool skip_dirt
+) {
+	DEV_ASSERT(tiles_i.size() > 0 && layer_offsets.size() > 0);
+	DEV_ASSERT(tiles_i.size() == layer_offsets.size());
+
+	if (tiles_i.size() == 1 || layer_offsets.size() == 1) {
+		add_tile_rect(layer_offsets[0], tiles_i[0], gpos, rect, true, rng);
+	}
+	else if (fill_type == FillType::MIX) {
+		for (int y{ 0 }; y < rect.y; ++y) {
+			for (int x{ 0 }; x < rect.x; ++x) {
+				const int rand_i{ rng->randi_range(0, tiles_i.size() - 1) };
+				const int tile_i{ tiles_i[rand_i] };
+				if (skip_dirt && tile_i == Tile::DIRT) {
+					continue;
+				}
+				const Vector2i offset{ x, y };
+				add_gpos_tile(layer_offsets[rand_i], tile_i, gpos + offset, true, rng);
+			}
+		}
+	}
+	else if (fill_type == FillType::PICK_ONE) {
+		const int rand_i{ rng->randi_range(0, tiles_i.size() - 1) };
+		const int tile_i{ tiles_i[rand_i] };
+		if (skip_dirt && tile_i == Tile::DIRT) {
+			return;
+		}
+		add_tile_rect(layer_offsets[rand_i], tile_i, gpos, rect, true, rng);
+	}
 }

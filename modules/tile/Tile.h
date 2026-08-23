@@ -110,8 +110,8 @@ public:
     inline static std::array<int, MAX_TILE> random_group_lengths;
     inline static std::array<Vector2i, MAX_TILE> tile_sizes;
     
-    Layer layer = BACKGROUND;
-    int tile = 0;
+    Layer layer;
+    int tile;
     String name;
     LocalVector<State> states;
     LocalVector<Vector2i> state_frame_ranges;

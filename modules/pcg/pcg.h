@@ -9,13 +9,16 @@ class RandomNumberGenerator;
 class PCG : public RefCounted {
 	GDCLASS(PCG, RefCounted);
 
+public:
+	enum FillType { PICK_ONE, MIX };
+
 private:
-	Vector2i m_seg_grid_size;
 	int cell_count;
 	int m_w_seg_y;
 	bool m_is_server;
 
 public:
+	Vector2i m_seg_grid_size;
 	Ref<BitGrid2D> generative_occupancy;
 	PackedByteArray tile_data;
 	PackedByteArray anchor_dist_data; // to find the anchor of larger tiles
@@ -150,4 +153,15 @@ public:
 	void clear_occupancy() const;
 
 	int randi_range_exp(Ref<RandomNumberGenerator> rng, int max, int min = 0);
+
+	void rand_fill_rect(
+		Ref<RandomNumberGenerator> rng,
+		FillType fill_type,
+		LocalVector<int> tiles_i,
+		LocalVector<int> layer_offsets,
+		Rect2i rect,
+		bool skip_dirt = false
+	);
 };
+
+VARIANT_ENUM_CAST(PCG::FillType)
