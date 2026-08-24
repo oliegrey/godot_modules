@@ -339,36 +339,27 @@ void PCG::add_row(
 void PCG::add_tile_rect(
 	int layer_offset,
 	int tile_i,
-	Vector2i seg_gpos,
-	Vector2i rect,
+	const Rect2i& rect,
 	bool add_occupancy,
-	Ref<RandomNumberGenerator> tile_variation_rng
+	Ref<RandomNumberGenerator> variation_rng
 ) {
-	for (int y{ 0 }; y < rect.y; ++y) {
-		for (int x{ 0 }; x < rect.x; ++x) {
-			const Vector2i gpos{ seg_gpos + Vector2i(x, y) };
-			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy, tile_variation_rng);
+	for (int y{ 0 }; y < rect.size.y; ++y) {
+		for (int x{ 0 }; x < rect.size.x; ++x) {
+			const Vector2i gpos{ rect.position + Vector2i(x, y) };
+			add_gpos_tile(layer_offset, tile_i, gpos, add_occupancy, variation_rng);
 		}
 	}
 }
 
 void PCG::add_tiles_rect(
 	PackedInt32Array layer_offsets,
-	PackedInt32Array tile_indexes,
-	Vector2i seg_gpos,
-	Vector2i g_size,
+	PackedInt32Array tiles_i,
+	const Rect2i& rect,
 	bool add_occupancy,
-	Ref<RandomNumberGenerator> tile_variation_rng
+	Ref<RandomNumberGenerator> variation_rng
 ) {
-	for (int i{ 0 }; i < tile_indexes.size(); ++i) {
-		add_tile_rect(
-			layer_offsets[i],
-			tile_indexes[i],
-			seg_gpos,
-			g_size,
-			add_occupancy,
-			tile_variation_rng
-		);
+	for (int i{ 0 }; i < tiles_i.size(); ++i) {
+		add_tile_rect(layer_offsets[i], tiles_i[i], rect, add_occupancy, variation_rng);
 	}
 }
 
@@ -553,8 +544,7 @@ void PCG::fill(
 		add_tile_rect(
 			layer_offset,
 			tile_i,
-			Vector2i(0, 0),
-			m_seg_grid_size,
+			Rect2i{ Vector2i{ 0, 0 }, m_seg_grid_size },
 			add_occupancy,
 			tile_variation_rng
 		);
@@ -604,45 +594,40 @@ int PCG::randi_range_exp(Ref<RandomNumberGenerator> rng, int max, int min) {
 			break;
 		}
 	}
+	}
 
 	return min + n;
 }
 
-/////////////////////////////////
-
 void PCG::rand_fill_rect(
 	Ref<RandomNumberGenerator> rng,
 	FillType fill_type,
-	LocalVector<int> tiles_i,
-	LocalVector<int> layer_offsets,
+	LocalVector<Ref<Tile>> tiles, 
 	Rect2i rect,
 	bool skip_dirt
 ) {
-	DEV_ASSERT(tiles_i.size() > 0 && layer_offsets.size() > 0);
-	DEV_ASSERT(tiles_i.size() == layer_offsets.size());
-
-	if (tiles_i.size() == 1 || layer_offsets.size() == 1) {
-		add_tile_rect(layer_offsets[0], tiles_i[0], gpos, rect, true, rng);
+	if (tiles.size() == 1) {
+		add_tile_rect(tiles[0]->layer * cell_count, tiles[0]->tile, rect, true, rng);
 	}
 	else if (fill_type == FillType::MIX) {
-		for (int y{ 0 }; y < rect.y; ++y) {
-			for (int x{ 0 }; x < rect.x; ++x) {
-				const int rand_i{ rng->randi_range(0, tiles_i.size() - 1) };
-				const int tile_i{ tiles_i[rand_i] };
-				if (skip_dirt && tile_i == Tile::DIRT) {
+		for (int y{ 0 }; y < rect.size.y; ++y) {
+			for (int x{ 0 }; x < rect.size.x; ++x) {
+				const int rand_i{ rng->randi_range(0, tiles.size() - 1) };
+				Ref<Tile> tile{ tiles[rand_i] };
+				if (skip_dirt && tile->tile == Tile::DIRT) {
 					continue;
 				}
-				const Vector2i offset{ x, y };
-				add_gpos_tile(layer_offsets[rand_i], tile_i, gpos + offset, true, rng);
+				const Vector2i gpos{ rect.position + Vector2i{ x, y } };
+				add_gpos_tile(tile->layer * cell_count, tile->tile, gpos, true, rng);
 			}
 		}
 	}
 	else if (fill_type == FillType::PICK_ONE) {
-		const int rand_i{ rng->randi_range(0, tiles_i.size() - 1) };
-		const int tile_i{ tiles_i[rand_i] };
-		if (skip_dirt && tile_i == Tile::DIRT) {
+		const int rand_i{ rng->randi_range(0, tiles.size() - 1) };
+		Ref<Tile> tile{ tiles[rand_i] };
+		if (skip_dirt && tile->tile == Tile::DIRT) {
 			return;
 		}
-		add_tile_rect(layer_offsets[rand_i], tile_i, gpos, rect, true, rng);
+		add_tile_rect(tile->layer * cell_count, tile->tile, rect, true, rng);
 	}
 }

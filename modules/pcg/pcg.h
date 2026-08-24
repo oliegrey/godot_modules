@@ -5,12 +5,13 @@
 class BitGrid2D;
 class SubgridProbe;
 class RandomNumberGenerator;
+class Tile;
 
 class PCG : public RefCounted {
 	GDCLASS(PCG, RefCounted);
 
 public:
-	enum FillType { PICK_ONE, MIX };
+	enum Fill { PICK_ONE, MIX };
 
 private:
 	int cell_count;
@@ -82,18 +83,16 @@ public:
 	void add_tile_rect(
 		int layer_offset,
 		int tile_i,
-		Vector2i seg_gpos,
-		Vector2i g_size,
-		bool add_occupancy = true,
-		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
+		const Rect2i& rect,
+		bool add_occupancy,
+		Ref<RandomNumberGenerator> tile_variation_rng
 	);
 	void add_tiles_rect(
 		PackedInt32Array layer_offsets,
-		PackedInt32Array tile_indexes,
-		Vector2i seg_gpos,
-		Vector2i g_size,
-		bool add_occupancy = true,
-		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
+		PackedInt32Array tiles_i,
+		const Rect2i& rect,
+		bool add_occupancy,
+		Ref<RandomNumberGenerator> variation_rng
 	);
 	void add_tile_ellipse(
 		int layer_offset,
@@ -157,8 +156,7 @@ public:
 	void rand_fill_rect(
 		Ref<RandomNumberGenerator> rng,
 		FillType fill_type,
-		LocalVector<int> tiles_i,
-		LocalVector<int> layer_offsets,
+		LocalVector<Ref<Tile>> tiles, 
 		Rect2i rect,
 		bool skip_dirt = false
 	);
