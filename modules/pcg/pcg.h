@@ -59,23 +59,23 @@ public:
 		int layer_cell_i,
 		int cell_i,
 		int tile_i,
-		Vector2i seg_gpos,
+		const Vector2i &seg_gpos,
 		bool add_occupancy,
-		Vector2i anchor_dist
+		const Vector2i &anchor_dist
 	);
 
 	void add_gpos_tile(
 		int layer_offset,
 		int tile_i,
-		Vector2i seg_gpos,
+		const Vector2i &seg_gpos,
 		bool add_occupancy = true,
 		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
 
 	void add_gpos_tiles(
-		PackedInt32Array layer_offsets,
-		PackedInt32Array tile_indexes,
-		Vector2i seg_gpos,
+		const PackedInt32Array &layer_offsets,
+		const PackedInt32Array &tile_indexes,
+		const Vector2i &seg_gpos,
 		bool add_occupancy = true,
 		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
@@ -88,8 +88,8 @@ public:
 		Ref<RandomNumberGenerator> tile_variation_rng
 	);
 	void add_tiles_rect(
-		PackedInt32Array layer_offsets,
-		PackedInt32Array tiles_i,
+		const PackedInt32Array &layer_offsets,
+		const PackedInt32Array &tiles_i,
 		const Rect2i& rect,
 		bool add_occupancy,
 		Ref<RandomNumberGenerator> variation_rng
@@ -97,16 +97,16 @@ public:
 	void add_tile_ellipse(
 		int layer_offset,
 		int tile_i,
-		Vector2i seg_gpos,
-		Vector2i g_size,
+		const Vector2i &seg_gpos,
+		const Vector2i &g_size,
 		bool add_occupancy = true,
 		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
 	void add_tiles_ellipse(
-		PackedInt32Array layer_offsets,
-		PackedInt32Array tile_indexes,
-		Vector2i seg_gpos,
-		Vector2i g_size,
+		const PackedInt32Array &layer_offsets,
+		const PackedInt32Array &tile_indexes,
+		const Vector2i &seg_gpos,
+		const Vector2i &g_size,
 		bool add_occupancy = true,
 		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
 	);
@@ -130,8 +130,8 @@ public:
 		bool use_tile_variations = false
 	);
 	void add_row(
-		PackedInt32Array layer_offsets,
-		PackedInt32Array tile_indexes,
+		const PackedInt32Array &layer_offsets,
+		const PackedInt32Array &tile_indexes,
 		int seg_gpos_y,
 		bool add_occupancy = true,
 		Ref<RandomNumberGenerator> tile_variation_rng = Ref<RandomNumberGenerator>()
@@ -155,11 +155,11 @@ public:
 
 	void rand_fill_rect(
 		Ref<RandomNumberGenerator> rng,
-		FillType fill_type,
+		Fill fill_type,
 		LocalVector<Ref<Tile>> tiles, 
 		Rect2i rect,
 		bool skip_dirt = false
 	);
 };
 
-VARIANT_ENUM_CAST(PCG::FillType)
+VARIANT_ENUM_CAST(PCG::Fill)

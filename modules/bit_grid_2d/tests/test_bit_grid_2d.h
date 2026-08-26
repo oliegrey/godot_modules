@@ -220,7 +220,7 @@ TEST_CASE("[BitGrid2D] find_largest_anchored_areas_in_area wanted_size found") {
 		Rect2i{ Vector2i{ 2, 0 }, Vector2i{ 1, 8 } },
 		Rect2i{ Vector2i{ 6, 0 }, Vector2i{ 2, 8 } }
 	};
-	bitgrid->set_area(Vector2i{0, 1}, Vector2i{2, 2});
+	bitgrid->set_rect(Vector2i{0, 1}, Vector2i{2, 2});
 	bitgrid->set_gpos(Vector2i{ 3, 0 });
 	LocalVector<Rect2i> result_areas{
 		bitgrid->find_largest_anchored_areas_in_area(
@@ -243,7 +243,7 @@ TEST_CASE("[BitGrid2D] find_largest_anchored_areas_in_area no wanted_size found"
 		Rect2i{ Vector2i{ 2, 0 }, Vector2i{ 1, 8 } },
 		Rect2i{ Vector2i{ 4, 0 }, Vector2i{ 4, 8 } }
 	};
-	bitgrid->set_area(Vector2i{0, 1}, Vector2i{2, 2});
+	bitgrid->set_rect(Vector2i{0, 1}, Vector2i{2, 2});
 	bitgrid->set_gpos(Vector2i{ 3, 0 });
 	LocalVector<Rect2i> result_areas{
 		bitgrid->find_largest_anchored_areas_in_area(
@@ -261,7 +261,7 @@ TEST_CASE("[BitGrid2D] find_largest_anchored_areas_in_area no wanted_size found"
 	bitgrid->clear();
 }
 TEST_CASE("[BitGrid2D] find_largest_anchored_areas_in_area is full") {
-	bitgrid->set_area(Vector2i{0, 0}, Vector2i{8, 8});
+	bitgrid->set_rect(Vector2i{0, 0}, Vector2i{8, 8});
 	LocalVector<Rect2i> result_areas{
 		bitgrid->find_largest_anchored_areas_in_area(
 			Vector2i(0, 0),

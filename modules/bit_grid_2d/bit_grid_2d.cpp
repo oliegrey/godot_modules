@@ -53,11 +53,10 @@ void BitGrid2D::_bind_methods() {
 		D_METHOD("unset_cell_i", "cell_i"), &BitGrid2D::unset_cell_i
 	);
 	ClassDB::bind_method(
-		D_METHOD("set_area", "origin", "size"), &BitGrid2D::set_area
+		D_METHOD("set_rect", "rect"), &BitGrid2D::set_rect
 	);
 	ClassDB::bind_method(
-		D_METHOD("is_area_state", "origin", "size", "is_set"),
-		&BitGrid2D::is_area_state, DEFVAL(false)
+		D_METHOD("is_rect_state", "origin", "rect"), &BitGrid2D::is_rect_state, DEFVAL(false)
 	);
 
 	ClassDB::bind_method(
@@ -152,16 +151,6 @@ void BitGrid2D::_bind_methods() {
 		PropertyInfo(Variant::PACKED_BYTE_ARRAY, "bitmap"),
 		"set_bitmap", "get_bitmap"
 	);
-
-	BIND_ENUM_CONSTANT(NONE);
-	BIND_ENUM_CONSTANT(UP);
-	BIND_ENUM_CONSTANT(DOWN);
-	BIND_ENUM_CONSTANT(LEFT);
-	BIND_ENUM_CONSTANT(RIGHT);
-	BIND_ENUM_CONSTANT(DIRECTION_MAX);
-
-	BIND_ENUM_CONSTANT(X);
-	BIND_ENUM_CONSTANT(Y);
 }
 
 Ref<BitGrid2D> BitGrid2D::create(const Vector2i _grid_size) {
@@ -238,39 +227,33 @@ void BitGrid2D::unset_cell_i(const int cell_i) {
 	data[cell_i / 8] &= ~(1 << (cell_i % 8));
 }
 
-void BitGrid2D::set_area(const Vector2i origin, const Vector2i size) {
+void BitGrid2D::set_rect(const Rect2i &rect) {
+	ERR_FAIL_COND_MSG(rect.size.x <= 0 || rect.size.y <= 0, "provided size is zero area");
 	ERR_FAIL_COND_MSG(
-		size.x <= 0 || size.y <= 0, "provided size is zero area"
-	);
-	ERR_FAIL_COND_MSG(
-		origin < Vector2i(0, 0) || origin + size > grid_size,
+		rect.position < Vector2i(0, 0) || rect.position + rect.size > grid_size,
 		"provided origin + size out of grid bounds"
 	);
 
 	uint8_t *data = bitmap.ptrw();
-	for (int y{ origin.y }; y < origin.y + size.y; y++) {
-		for (int x{ origin.x }; x < origin.x + size.x; x++) {
+	for (int y{ rect.position.y }; y < rect.position.y + rect.position.y; y++) {
+		for (int x{ rect.position.x }; x < rect.position.x + rect.size.x; x++) {
 			const int cell_i{ gpos_to_cell_i(Vector2i(x, y)) };
 			data[cell_i / 8] |= 1 << (cell_i % 8);
 		}
 	}
 }
 
-bool BitGrid2D::is_area_state(
-	const Vector2i origin, const Vector2i size, const bool is_set
-) const {
+bool BitGrid2D::is_rect_state(const Rect2i &rect, const bool is_set) const {
+	ERR_FAIL_COND_V_MSG(rect.size.x <= 0 || rect.size.y <= 0, false, "provided size is zero area");
 	ERR_FAIL_COND_V_MSG(
-		size.x <= 0 || size.y <= 0, false, "provided size is zero area"
-	);
-	ERR_FAIL_COND_V_MSG(
-		origin < Vector2i(0, 0) || origin + size > grid_size, false,
+		rect.position < Vector2i(0, 0) || rect.position + rect.size > grid_size, false,
 		"provided origin + size out of grid bounds"
 	);
 
 	const int required_state{ static_cast<int>(is_set) };
 
-	for (int y{ origin.y }; y < origin.y + size.y; y++) {
-		for (int x{ origin.x }; x < origin.x + size.x; x++) {
+	for (int y{ rect.position.y }; y < rect.position.y + rect.size.y; y++) {
+		for (int x{ rect.position.x }; x < rect.position.x + rect.size.x; x++) {
 			const int cell_i{ gpos_to_cell_i(Vector2i(x, y)) };
 			const int bit{ (bitmap[cell_i / 8] >> (cell_i % 8)) & 1 };
 			if (bit != required_state) {
@@ -309,7 +292,7 @@ Vector2i BitGrid2D::find_rand_anchored_unset_area_in_bounds(
 	Ref<RandomNumberGenerator> rng,
 	Vector2i bounds_origin,
 	Vector2i bounds_size,
-	const Direction anchor_dir,
+	const Direction::E anchor_dir,
 	Vector2i wanted_size
 ) const {
 
@@ -524,7 +507,7 @@ int BitGrid2D::find_area_in_grid(
 LocalVector<Rect2i> BitGrid2D::find_largest_anchored_areas_in_area(
 	Vector2i origin,
 	Vector2i search_size,
-	Direction anchor_dir,
+	Direction::E anchor_dir,
 	Ref<RandomNumberGenerator> rng,
 	Vector2i wanted_size
 ) const {
@@ -644,7 +627,7 @@ LocalVector<Rect2i> BitGrid2D::find_largest_anchored_areas_in_area(
 Vector2i BitGrid2D::find_anchored_area_in_area(
 	Vector2i origin,
 	Vector2i search_size,
-	Direction anchor_dir,
+	Direction::E anchor_dir,
 	Vector2i wanted_size,
 	Ref<RandomNumberGenerator> rng
 ) const {
@@ -670,7 +653,7 @@ Vector2i BitGrid2D::find_anchored_area_in_area(
 BitGrid2D::HistogramResult BitGrid2D::compute_histogram(
 	Vector2i origin,
 	Vector2i size,
-	Direction anchor_dir,
+	Direction::E anchor_dir,
 	int start_bar,
 	Vector2i wanted_size,
 	bool exit_on_wanted_found

@@ -267,9 +267,9 @@ void PCG::add_cell_i(
 	int layer_cell_i,
 	int cell_i,
 	int tile_i,
-	Vector2i seg_gpos,
+	const Vector2i& seg_gpos,
 	bool add_occupancy,
-	Vector2i anchor_dist
+	const Vector2i &anchor_dist
 ) {
 	add_tile_data(layer_cell_i, tile_i);
 	add_anchor_dist(layer_cell_i, anchor_dist);
@@ -281,7 +281,7 @@ void PCG::add_cell_i(
 void PCG::add_gpos_tile(
 	int layer_offset,
 	int tile_i,
-	Vector2i seg_gpos,
+	const Vector2i &seg_gpos,
 	bool add_occupancy,
 	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
@@ -301,9 +301,9 @@ void PCG::add_gpos_tile(
 }
 
 void PCG::add_gpos_tiles(
-	PackedInt32Array layer_offsets,
-	PackedInt32Array tile_indexes,
-	Vector2i seg_gpos,
+	const PackedInt32Array &layer_offsets,
+	const PackedInt32Array &tile_indexes,
+	const Vector2i &seg_gpos,
 	bool add_occupancy,
 	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
@@ -319,8 +319,8 @@ void PCG::add_gpos_tiles(
 }
 
 void PCG::add_row(
-	PackedInt32Array layer_offsets,
-	PackedInt32Array tile_indexes,
+	const PackedInt32Array &layer_offsets,
+	const PackedInt32Array &tile_indexes,
 	int seg_gpos_y,
 	bool add_occupancy,
 	Ref<RandomNumberGenerator> tile_variation_rng
@@ -352,8 +352,8 @@ void PCG::add_tile_rect(
 }
 
 void PCG::add_tiles_rect(
-	PackedInt32Array layer_offsets,
-	PackedInt32Array tiles_i,
+	const PackedInt32Array &layer_offsets,
+	const PackedInt32Array &tiles_i,
 	const Rect2i& rect,
 	bool add_occupancy,
 	Ref<RandomNumberGenerator> variation_rng
@@ -366,8 +366,8 @@ void PCG::add_tiles_rect(
 void PCG::add_tile_ellipse(
 	int layer_offset,
 	int tile_i,
-	Vector2i seg_gpos,
-	Vector2i g_size,
+	const Vector2i &seg_gpos,
+	const Vector2i &g_size,
 	bool add_occupancy,
 	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
@@ -397,10 +397,10 @@ void PCG::add_tile_ellipse(
 }
 
 void PCG::add_tiles_ellipse(
-	PackedInt32Array layer_offsets,
-	PackedInt32Array tile_indexes,
-	Vector2i seg_gpos,
-	Vector2i g_size,
+	const PackedInt32Array &layer_offsets,
+	const PackedInt32Array &tile_indexes,
+	const Vector2i &seg_gpos,
+	const Vector2i &g_size,
 	bool add_occupancy,
 	Ref<RandomNumberGenerator> tile_variation_rng
 ) {
@@ -594,14 +594,13 @@ int PCG::randi_range_exp(Ref<RandomNumberGenerator> rng, int max, int min) {
 			break;
 		}
 	}
-	}
 
 	return min + n;
 }
 
 void PCG::rand_fill_rect(
 	Ref<RandomNumberGenerator> rng,
-	FillType fill_type,
+	Fill fill_type,
 	LocalVector<Ref<Tile>> tiles, 
 	Rect2i rect,
 	bool skip_dirt
@@ -609,7 +608,7 @@ void PCG::rand_fill_rect(
 	if (tiles.size() == 1) {
 		add_tile_rect(tiles[0]->layer * cell_count, tiles[0]->tile, rect, true, rng);
 	}
-	else if (fill_type == FillType::MIX) {
+	else if (fill_type == Fill::MIX) {
 		for (int y{ 0 }; y < rect.size.y; ++y) {
 			for (int x{ 0 }; x < rect.size.x; ++x) {
 				const int rand_i{ rng->randi_range(0, tiles.size() - 1) };
@@ -622,7 +621,7 @@ void PCG::rand_fill_rect(
 			}
 		}
 	}
-	else if (fill_type == FillType::PICK_ONE) {
+	else if (fill_type == Fill::PICK_ONE) {
 		const int rand_i{ rng->randi_range(0, tiles.size() - 1) };
 		Ref<Tile> tile{ tiles[rand_i] };
 		if (skip_dirt && tile->tile == Tile::DIRT) {

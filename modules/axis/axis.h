@@ -7,7 +7,7 @@ class Axis : public RefCounted {
 	GDCLASS(Axis, RefCounted);
 
 public:
-	enum E { NONE, X, Y, ALL };
+	enum E { NONE = -1, X, Y, ALL };
 
 protected:
 	void _bind_methods();

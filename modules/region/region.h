@@ -87,11 +87,58 @@ public:
 		}
 	};
 
-	inline static const Vector2i A_NONE{ 0, 0 };
-	inline static const Vector2i A_UP{ 0, 1 };
-	inline static const Vector2i A_DOWN{ 0, -1 };
-	inline static const Vector2i A_LEFT{ 1, 0 };
-	inline static const Vector2i A_RIGHT{ -1, 0 };
+	struct Size {
+		Vector2i i; // includes blocked sides
+		int i_cell_count;
+		Vector2i e;
+		int e_cell_count;
+
+		Size(const Size &size) :
+				i{ size.i },
+				i_cell_count{ size.i_cell_count },
+				e{ size.e },
+				e_cell_count{ size.e_cell_count }
+			{ }
+
+		Size(const Vector2i &_exclusive, const LocalVector<BlockedSide> &blocked_sides) :
+				e{ _exclusive },
+				e_cell_count{ _exclusive.x * _exclusive.y } {
+
+			i = _exclusive;
+			for (BlockedSide blocked_side : blocked_sides) {
+				if (
+					blocked_side.direction == Direction::UP ||
+					blocked_side.direction == Direction::DOWN
+				) {
+					i.y += 1;
+				} else if (
+					blocked_side.direction == Direction::LEFT ||
+					blocked_side.direction == Direction::RIGHT
+				) {
+					i.x += 1;
+				}
+			}
+			i_cell_count = i.x * i.y;
+			ERR_FAIL_COND_MSG(
+				i.x > MAX_G_SIZE_X, vformat("i.x size(%s) exceeeds max(%s)", i.x, MAX_G_SIZE_X)
+			);
+			ERR_FAIL_COND_MSG(
+				i.y > MAX_G_SIZE_Y, vformat("i.y size(%s) exceeeds max(%s)", i.y, MAX_G_SIZE_Y)
+			);
+		}
+
+		Size &operator+=(const Vector2i &p_extend) {
+			i += p_extend;
+			i_cell_count = i.x * i.y;
+			e += p_extend;
+			e_cell_count = e.x * e.y;
+			return *this;
+		}
+	};
+
+	inline static const LocalVector<Vector2i> s_dir_to_gpos_alignment{
+		{ 0, 0 }, { 0, 1 }, { 0, -1 }, { 1, 0 }, { -1, 0 }
+	};
 
 private:
 	using RegionVector = LocalVector<Ref<Region>>;
@@ -111,29 +158,19 @@ public:
 
 	String name;
 	Slot slot;
-	Vector2i g_size;
-	Vector2i g_size_inclusive; // includes stone sides
+	Size size;
 	LocalVector<BlockedSide> blocked_sides;
+	LocalVector<Direction::E> free_sides;
 	LocalVector<Direction::E> joining_sides;
 	float spawn_weight;
 	int threshold;
 	Vector2i rand_length_addition{ NOT_SET };
 	LocalVector<InternalChoiceSet> internal_choices;
 
-private:
-	static void debug_region(
-		Vector2i gpos, Vector2i rand_g_size, Ref<Region> region, int w_seg
-	);
-
 protected:
 	static void _bind_methods();
 
 public:
-	static Vector2i ALIGN_NONE();
-	static Vector2i ALIGN_UP();
-	static Vector2i ALIGN_DOWN();
-	static Vector2i ALIGN_LEFT();
-	static Vector2i ALIGN_RIGHT();
 	String get_name() const;
 	Region::Slot get_slot() const;
 	Vector2i get_g_size() const;
@@ -151,23 +188,27 @@ public:
 		int _threshold,
 
 		PackedInt32Array _blocked_sides,
-		PackedInt32Array _blocked_fill,
 		PackedInt32Array _blocked_tiles,
+		PackedInt32Array _blocked_fill,
 		PackedInt32Array _joining_sides,
 
-		TypedArray<Array> internal_class_or_tile_choices, // arrays of [callable, tile_i, ...]
+		TypedArray<Array> internal_class_or_tile_choices,
 		TypedArray<PackedInt32Array> internal_weights,
-		TypedArray<PackedVector2Array> internal_gpos_alignments,
+		TypedArray<PackedInt32Array> internal_alignments,
 		TypedArray<PackedInt32Array> internal_placements,
 
-		Vector2i _rand_length_addition = Vector2i(0, 0),
-		Axis::E mirror_axes = Axis::NONE
+		Vector2i _rand_length_addition,
+		Axis::E mirror_axes
 	);
 
 	static void finalize();
 
-	static float get_weight_sum_bounded(
-		const PackedFloat32Array &p_weights, const int exl_upper_bound
+	static float get_slot_weights_sum(const Slot slot, const int threshold_i);
+
+	static int get_slot_threshold_i(const Slot slot, const int gate);
+
+	static Ref<Region> get_slot_rand_region(
+		const Slot slot, const int threshold_i, const float weights_sum, const float rand_float
 	);
 
 	String get_internal_choices_debug() const;

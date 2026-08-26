@@ -80,10 +80,10 @@ TEST_CASE("[Region] initialized correctly") {
 	}
 
 	SUBCASE("[Region] p_region g_size is set correctly") {
-		CHECK(p_region->g_size == Vector2i{ 3, 3 });
+		CHECK(p_region->size.e == Vector2i{ 3, 3 });
 	}
 	SUBCASE("[Region] p_region g_size_inclusive adds left, right and down blocked sides") {
-		CHECK(p_region->g_size_inclusive == Vector2i{ 4, 4 });
+		CHECK(p_region->size.i == Vector2i{ 4, 4 });
 	}
 
 	SUBCASE("[Region] s_region1 g_size is set correctly") {
@@ -103,7 +103,7 @@ TEST_CASE("[Region] initialized correctly") {
 
 TEST_CASE("[Region] edge is added in the correct location, while ignoring blocked sides and pinned at the top") {
 	diredge = Region::DirEdge{};
-	p_region->add_free_edge_gpos(Vector2i(0, 1), p_region->g_size, diredge);
+	p_region->add_free_edge_gpos(Vector2i(0, 1), p_region->size.e, diredge);
 
 	CHECK(diredge[Region::Direction::UP].size() == 1);
 	CHECK(diredge[Region::Direction::DOWN].size() == 0);
@@ -111,12 +111,12 @@ TEST_CASE("[Region] edge is added in the correct location, while ignoring blocke
 	CHECK(diredge[Region::Direction::RIGHT].size() == 0);
 
 	CHECK(diredge[Region::Direction::UP][0].gpos == Vector2i{0, 0});
-	CHECK(diredge[Region::Direction::UP][0].size == p_region->g_size);
+	CHECK(diredge[Region::Direction::UP][0].size == p_region->size.e);
 }
 
 TEST_CASE("[Region] no edge is added when grid position is outside of segment boundary < 0") {
 	diredge = Region::DirEdge{};
-	p_region->add_free_edge_gpos(Vector2i(0, 0), p_region->g_size, diredge);
+	p_region->add_free_edge_gpos(Vector2i(0, 0), p_region->size.e, diredge);
 
 	CHECK(diredge[Region::Direction::UP].size() == 0);
 	CHECK(diredge[Region::Direction::DOWN].size() == 0);

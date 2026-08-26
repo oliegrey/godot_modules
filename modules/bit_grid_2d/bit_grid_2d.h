@@ -2,6 +2,8 @@
 
 #include "core/object/ref_counted.h"
 #include "core/variant/typed_array.h"
+#include "modules/direction/direction.h"
+#include "modules/axis/axis.h"
 
 class RandomNumberGenerator;
 
@@ -9,9 +11,6 @@ class BitGrid2D : public RefCounted {
 	GDCLASS(BitGrid2D, RefCounted);
 
 public:
-	enum Direction {NONE = -1, UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, DIRECTION_MAX = 4};
-	enum Axis {X = 0, Y = 1};
-
 	struct HistogramResult {
 		int wanted_cell_i;
 		PackedInt32Array histogram;
@@ -37,7 +36,7 @@ private:
 	HistogramResult compute_histogram(
 		Vector2i origin,
 		Vector2i size,
-		Direction anchor_dir,
+		Direction::E anchor_dir,
 		int start_bar = 0,
 		Vector2i wanted_size = Vector2i(0, 0),
 		bool exit_on_wanted_found = false
@@ -65,27 +64,21 @@ public:
 	void set_cell_i(const int cell_i);
 	void unset_cell_i(const int cell_i);
 
-	bool is_area_state(
-		const Vector2i origin, const Vector2i size, const bool is_set = false
-	) const;
+	bool is_rect_state(const Rect2i &rect, const bool is_set = false) const;
 
-	void set_area(const Vector2i gpos, const Vector2i size);
+	void set_rect(const Rect2i &rect);
 
 	Vector2i find_rand_anchored_unset_area_in_bounds(
 		Ref<RandomNumberGenerator> rng,
 		Vector2i bounds_origin,
 		Vector2i bounds_size,
-		const Direction anchor_dir,
+		const Direction::E anchor_dir,
 		Vector2i wanted_size
 	) const;
 
-	int find_cell_in_state(
-		int end_cell_inc, int start_cell = 0, bool get_unset = true
-	) const;
+	int find_cell_in_state(int end_cell_inc, int start_cell = 0, bool get_unset = true) const;
 
-	int find_area_in_grid(
-		Vector2i size, int start_cell, int end_cell, bool get_unset = true
-	) const;
+	int find_area_in_grid(Vector2i size, int start_cell, int end_cell, bool get_unset = true) const;
 
 	Vector2i find_rand_gpos_in_state(
 		Ref<RandomNumberGenerator> rng,
@@ -118,7 +111,7 @@ public:
 	Vector2i find_anchored_area_in_area(
 		Vector2i origin,
 		Vector2i search_size,
-		Direction anchor_dir,
+		Direction::E anchor_dir,
 		Vector2i wanted_size,
 		Ref<RandomNumberGenerator> rng = Ref<RandomNumberGenerator>()
 	) const;
@@ -126,11 +119,8 @@ public:
 	LocalVector<Rect2i> find_largest_anchored_areas_in_area(
 		Vector2i origin,
 		Vector2i search_size,
-		Direction anchor_dir,
+		Direction::E anchor_dir,
 		Ref<RandomNumberGenerator> rng = Ref<RandomNumberGenerator>(),
 		Vector2i wanted_size = Vector2i(0, 0)
 	) const;
 };
-
-VARIANT_ENUM_CAST(BitGrid2D::Direction);
-VARIANT_ENUM_CAST(BitGrid2D::Axis);
