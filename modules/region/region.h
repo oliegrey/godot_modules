@@ -26,40 +26,50 @@ public:
 	enum Placement { RANDOM, CENTER, START, END, FILL, FORCE_GPOS };
 
 	struct InternalEntry {
+	public:
 		enum Type { TYPE_CALLABLE, TYPE_TILE_REF };
+
+	public:
+		inline static const LocalVector<Vector2i> s_dir_to_gpos_alignment{
+			{ 0, 0 }, { 0, 1 }, { 0, -1 }, { 1, 0 }, { -1, 0 }
+		};
 
 		Type type;
 		Callable callable;
 		Ref<Tile> tile;
 		Vector2i size;
 		Vector2i gpos_alignment;
+		Direction::E alignment;
 		int32_t placement;
 
+	public:
 		static InternalEntry make_callable(
-			const Callable &p_callable,
-			const Vector2i p_size,
-			const Vector2 p_gpos_alignment,
-			const int32_t p_placement
+			const Callable &_callable,
+			const Vector2i &_size,
+			const Direction::E _alignment_dir,
+			const int32_t _placement
 		) {
 			InternalEntry e;
 			e.type = TYPE_CALLABLE;
-			e.callable = p_callable;
-			e.size = p_size;
-			e.gpos_alignment = Vector2i(p_gpos_alignment);
-			e.placement = p_placement;
+			e.callable = _callable;
+			e.size = _size;
+			e.alignment = _alignment_dir;
+			e.gpos_alignment = Vector2i(s_dir_to_gpos_alignment[_alignment_dir]);
+			e.placement = _placement;
 			return e;
 		}
 
 		static InternalEntry make_tile_ref(
 			Ref<Tile> tile,
-			const Vector2 p_gpos_alignment,
+			const Direction::E _alignment_dir,
 			const int32_t p_placement
 		) {
 			InternalEntry e;
 			e.type = TYPE_TILE_REF;
 			e.tile = tile;
 			e.size = tile->g_size;
-			e.gpos_alignment = Vector2i(p_gpos_alignment);
+			e.alignment = _alignment_dir;
+			e.gpos_alignment = Vector2i(s_dir_to_gpos_alignment[_alignment_dir]);
 			e.placement = p_placement;
 			return e;
 		}
@@ -75,6 +85,8 @@ public:
 		PCG::Fill fill;
 		LocalVector<Ref<Tile>> tiles;
 
+		BlockedSide() = default;
+
 		BlockedSide(Direction::E _direction, PCG::Fill _fill, LocalVector<Ref<Tile>> _tiles)
 		: direction{ _direction }, fill{ _fill }, tiles{ _tiles } {}
 
@@ -82,6 +94,7 @@ public:
 		: direction{ _direction }, fill{ _fill } {
 			for (int i{ 0 }; i < _tiles.size(); ++i) {
 				const int tile_i{ _tiles[i] };
+				ERR_FAIL_INDEX(tile_i, Tile::MAX_TILE);
 				tiles[i] = Tile::get_tile(tile_i);
 			}
 		}
@@ -92,6 +105,8 @@ public:
 		int i_cell_count;
 		Vector2i e;
 		int e_cell_count;
+
+		Size() = default;
 
 		Size(const Size &size) :
 				i{ size.i },
@@ -136,10 +151,6 @@ public:
 		}
 	};
 
-	inline static const LocalVector<Vector2i> s_dir_to_gpos_alignment{
-		{ 0, 0 }, { 0, 1 }, { 0, -1 }, { 1, 0 }, { -1, 0 }
-	};
-
 private:
 	using RegionVector = LocalVector<Ref<Region>>;
 
@@ -173,10 +184,10 @@ protected:
 public:
 	String get_name() const;
 	Region::Slot get_slot() const;
-	Vector2i get_g_size() const;
+	Vector2i get_size_e() const;
+	Vector2i get_size_i() const;
 	float get_spawn_weight() const;
 	int get_threshold() const;
-	Vector2i get_g_size_inclusive() const;
 
 	static void initialize(Vector2i seg_g_size, bool debug = false);
 
@@ -188,11 +199,11 @@ public:
 		int _threshold,
 
 		PackedInt32Array _blocked_sides,
-		PackedInt32Array _blocked_tiles,
+		TypedArray<PackedInt32Array> _blocked_tile_sets,
 		PackedInt32Array _blocked_fill,
 		PackedInt32Array _joining_sides,
 
-		TypedArray<Array> internal_class_or_tile_choices,
+		TypedArray<Array> internal_callable_or_tile_choices,
 		TypedArray<PackedInt32Array> internal_weights,
 		TypedArray<PackedInt32Array> internal_alignments,
 		TypedArray<PackedInt32Array> internal_placements,

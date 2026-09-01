@@ -18,12 +18,14 @@ class Zone : public RefCounted {
 
 private:
 	struct Edge {
-		int has_blocked_side;
+		int has_blocked_origin;
 		int length;
 		Vector2i gpos;
 
-		Edge(int _has_blocked_side, int _length, const Vector2i &_gpos) :
-				has_blocked_side{ _has_blocked_side }, length{ _length }, gpos{ _gpos }
+		Edge() = default;
+
+		Edge(int _has_blocked_origin, int _length, const Vector2i &_gpos) :
+				has_blocked_origin{ _has_blocked_origin }, length{ _length }, gpos{ _gpos }
 			{}
 	};
 
@@ -31,8 +33,8 @@ private:
 	// dir * max size in cells + size in cells -> grid position
 	class SizedEdgeCache {
 	private:
-		static std::array<std::array<uint64_t, 8>, 8> create_dominance_mask();
-		inline static std::array<std::array<uint64_t, 8>, 8> s_dominance_mask{ create_dominance_mask() };
+		static std::array<std::array<uint64_t, 8>, 8> create_dominance_mask_64();
+		inline static std::array<std::array<uint64_t, 8>, 8> s_dominance_mask{ create_dominance_mask_64() };
 		inline static constexpr std::array<int, Direction::MAX> dir_offsets{
 			Direction::UP * Region::MAX_CELL_COUNT,
 			Direction::DOWN * Region::MAX_CELL_COUNT,
@@ -44,35 +46,14 @@ private:
 
 	private:
 		static int get_size_i(const Vector2i &p_size);
-
-		static int get_gpos_i(const Direction::E dir, const int size_cell_i) {
-			dir_offsets[dir] + size_cell_i;
-		}
+		static int get_gpos_i(const Direction::E dir, const int size_cell_i);
 
 	public:
 		int get_size_or_larger_i(Direction::E dir, const Vector2i size);
 		int get_size_or_larger_i(Direction::E dir, const int cell_count);
 		void add_free_rects(Direction::E dir, const LocalVector<Rect2i> &free_rects, int start_i);
-		const LocalVector<Vector2i> &get_gpos(Direction::E dir, const int size_cell_i) {
-			const int gpos_i{ get_gpos_i(dir, size_cell_i) };
-			return m_gpos[gpos_i];
-		}
-
-		// returns whether the array is now empty //// remove_edge
-		bool remove_free_rect(Direction::E dir, int size_cell_i, int rect_i) {
-			const int gpos_i{ get_gpos_i(dir, size_cell_i) };
-			LocalVector<Vector2i> &gpos{ m_gpos[gpos_i] };
-
-			const int last_rect_i{ gpos.size() - 1 };
-			gpos[rect_i] = gpos[last_rect_i];
-			gpos.resize(last_rect_i);
-
-			if (gpos.size() == 0) {
-				m_occ[dir] &= ~(1ull << size_cell_i);
-				return true;
-			}
-			return false;
-		}
+		const LocalVector<Vector2i> &get_gpos(Direction::E dir, const int size_cell_i);
+		bool remove_free_rect(Direction::E dir, int size_cell_i, int rect_i);
 	};
 
 private:
@@ -88,7 +69,10 @@ private:
 	
 	std::array<LocalVector<Edge>, Direction::MAX> dir_to_free_edges; // free grid position look up based on direction requirement; dir -> [free edge gpos, g_size, ...]
 	SizedEdgeCache m_sized_edge_cache{};
-	
+
+public:
+	inline static const Vector2i NOT_SET{ -9999, -9999 };
+
 private:
 	void generate_primary();
 	void generate_secondary();
@@ -111,13 +95,6 @@ private:
 
 	void add_free_edges_to_cache(Ref<Region> region, const Rect2i &region_rect_e);
 
-	bool remove_edge(
-		LocalVector<Vector2i> &free_gpos_arr,
-		int edge_i,
-		uint64_t &dir_occupancy,
-		int size_cell_i
-	);
-
 	void fill_blocked_sides(
 		const LocalVector<Region::BlockedSide> &blocked_sides,
 		const Rect2i &region_rect
@@ -128,21 +105,17 @@ private:
 
 	void try_place_internal(const Region::InternalEntry &choice, const Vector2i &gpos);
 
-	void add_dir_size_to_gpos(
-		int req_dir_offset, Direction::E req_dir, const LocalVector<Rect2i> &areas, int start_i
-	);
-
 	void fill_internal(Ref<Region> region, const Rect2i &region_rect);
 	
-	void debug_region(Ref<Region> region, const Rect2i &region_rect_inc);
+	void debug_region(Ref<Region> region, const Rect2i &region_rect_inc) const;
 
 protected:
-	void _bind_methods();
+	static void _bind_methods();
 
 public:
-	void initialize(Vector2i seg_g_size, bool is_debug = false);
+	static void initialize(Vector2i seg_g_size, bool is_debug = false);
 	
-	Ref<Zone> create(
+	static Ref<Zone> create(
 		Ref<RandomNumberGenerator> rng, Ref<PCG> pcg, int max_secondary_count, int w_seg
 	);
 };

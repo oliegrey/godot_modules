@@ -9,7 +9,7 @@ public:
 	enum E { NONE = -1, UP, DOWN, LEFT, RIGHT, MAX };
 
 protected:
-	void _bind_methods();
+	static void _bind_methods();
 
 public:
 	static E invert(E direction) {

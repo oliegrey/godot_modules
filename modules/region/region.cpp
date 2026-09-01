@@ -41,7 +41,7 @@ void Region::_bind_methods() {
 			"threshold",
 
 			"blocked_sides",
-			"blocked_tiles"
+			"blocked_tile_sets",
 			"blocked_fill",
 			"joining_sides",
 
@@ -60,63 +60,25 @@ void Region::_bind_methods() {
 
 	ClassDB::bind_static_method("Region", D_METHOD("finalize"), &Region::finalize);
 
-	ClassDB::bind_method(
-		D_METHOD("get_name"), &Region::get_name
-	);
-	ClassDB::bind_method(
-		D_METHOD("get_slot"), &Region::get_slot
-	);
-	ClassDB::bind_method(
-		D_METHOD("get_size_e"), &Region::get_size_e
-	);
-	ClassDB::bind_method(
-		D_METHOD("get_size_i"), &Region::get_size_i
-	);
-	ClassDB::bind_method(
-		D_METHOD("get_spawn_weight"), &Region::get_spawn_weight
-	);
-	ClassDB::bind_method(
-		D_METHOD("get_threshold"), &Region::get_threshold
-	);
-	ClassDB::bind_method(
-		D_METHOD("get_internal_choices_debug"), &Region::get_internal_choices_debug
-	);
-	ADD_PROPERTY(
-		PropertyInfo(Variant::STRING, "name"),
-		"", "get_name"
-	);
-	ADD_PROPERTY(
-		PropertyInfo(Variant::INT, "slot", PROPERTY_HINT_ENUM, "Primary,Secondary"),
-		"", "get_slot"
-	);
-	ADD_PROPERTY(
-		PropertyInfo(Variant::VECTOR2I, "size_e"),
-		"", "get_size_e"
-	);
-	ADD_PROPERTY(
-		PropertyInfo(Variant::VECTOR2I, "size_i"),
-		"", "get_size_i"
-	);
-	ADD_PROPERTY(
-		PropertyInfo(Variant::PACKED_INT32_ARRAY, "blocked_sides"),
-		"", "get_blocked_sides"
-	);
-	ADD_PROPERTY(
-		PropertyInfo(Variant::PACKED_INT32_ARRAY, "joining_sides"),
-		"", "get_joining_sides"
-	);
-	ADD_PROPERTY(
-		PropertyInfo(Variant::FLOAT, "spawn_weight"),
-		"", "get_spawn_weight"
-	);
-	ADD_PROPERTY(
-		PropertyInfo(Variant::INT, "threshold"),
-		"", "get_threshold"
-	);
-	ADD_PROPERTY(
-		PropertyInfo(Variant::PACKED_INT32_ARRAY, "blocked_fill"),
-		"", "get_blocked_fill"
-	);
+	ClassDB::bind_method(D_METHOD("get_internal_choices_debug"), &Region::get_internal_choices_debug);
+
+	ClassDB::bind_method(D_METHOD("get_name"), &Region::get_name);
+	ADD_PROPERTY(PropertyInfo(Variant::STRING, "name"), "", "get_name");
+
+	ClassDB::bind_method(D_METHOD("get_slot"), &Region::get_slot);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "slot", PROPERTY_HINT_ENUM, "Primary,Secondary"), "", "get_slot");
+
+	ClassDB::bind_method(D_METHOD("get_size_e"), &Region::get_size_e);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2I, "size_e"), "", "get_size_e");
+
+	ClassDB::bind_method(D_METHOD("get_size_i"), &Region::get_size_i);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2I, "size_i"), "", "get_size_i");
+
+	ClassDB::bind_method(D_METHOD("get_spawn_weight"), &Region::get_spawn_weight);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "spawn_weight"), "", "get_spawn_weight");
+
+	ClassDB::bind_method(D_METHOD("get_threshold"), &Region::get_threshold);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "threshold"), "", "get_threshold");
 
 	BIND_ENUM_CONSTANT(PRIMARY);
 	BIND_ENUM_CONSTANT(SECONDARY);
@@ -131,8 +93,8 @@ void Region::_bind_methods() {
 
 String Region::get_name() const { return name; }
 Region::Slot Region::get_slot() const { return slot; }
-Vector2i Region::get_g_size() const { return size.e; }
-Vector2i Region::get_g_size_inclusive() const { return size.i; }
+Vector2i Region::get_size_e() const { return size.e; }
+Vector2i Region::get_size_i() const { return size.i; }
 float Region::get_spawn_weight() const { return spawn_weight; }
 int Region::get_threshold() const { return threshold; }
 
@@ -145,11 +107,11 @@ Ref<Region> Region::create(
 	int _threshold,
 
 	PackedInt32Array _blocked_sides,
-	PackedInt32Array _blocked_tiles,
+	TypedArray<PackedInt32Array> _blocked_tile_sets,
 	PackedInt32Array _blocked_fill,
 	PackedInt32Array _joining_sides,
 
-	TypedArray<Array> internal_class_or_tile_choices,
+	TypedArray<Array> internal_callable_or_tile_choices,
 	TypedArray<PackedInt32Array> internal_weights,
 	TypedArray<PackedInt32Array> internal_alignments, // directions
 	TypedArray<PackedInt32Array> internal_placements,
@@ -158,8 +120,32 @@ Ref<Region> Region::create(
 	Axis::E mirror_axes
 ) {
 	ERR_FAIL_COND_V_MSG(
-		_slot == Slot::SECONDARY && _joining_sides.size() > 0, Ref<Region>(),
+		_slot == Slot::SECONDARY && _joining_sides.size() <= 0, Ref<Region>(),
 		"secondary region has no joining sides"
+	);
+
+	ERR_FAIL_COND_V_MSG(
+		internal_callable_or_tile_choices.size() != internal_weights.size() ||
+		internal_callable_or_tile_choices.size() != internal_alignments.size() ||
+		internal_callable_or_tile_choices.size() != internal_placements.size(),
+		Ref<Region>(),
+		vformat(
+			"internal arguments are not of equal length (%s, %s, %s, %s)",
+			internal_callable_or_tile_choices.size(),
+			internal_weights.size(),
+			internal_alignments.size(),
+			internal_placements.size()
+		)
+	);
+
+	ERR_FAIL_COND_V_MSG(
+		_blocked_sides.size() != _blocked_fill.size() &&
+		_blocked_tile_sets.size() != _blocked_fill.size(),
+		Ref<Region>(),
+		vformat(
+			"blocked data are not of equal length (%s, %s, %s)",
+			_blocked_sides.size(), _blocked_tile_sets.size(), _blocked_fill.size()
+		)
 	);
 
 	Ref<Region> region;
@@ -184,21 +170,24 @@ Ref<Region> Region::create(
 		region->slot             = _slot;
 
 		region->free_sides.reserve(Direction::MAX - _blocked_sides.size());
-		for (int dir_i : _blocked_sides) {
+
+		for (int i{ 0 }; i < _blocked_sides.size(); ++i) {
+			const int dir_i{ _blocked_sides[i] };
+
 			if (_blocked_sides.has(dir_i)) {
 				Direction::E dir{ static_cast<Direction::E>(dir_i) };
 				dir = Axis::mirror_direction(m_axis, dir);
 
-				PCG::Fill blocked_fill{ static_cast<PCG::Fill>(_blocked_fill[dir_i]) };
+				PCG::Fill blocked_fill{ static_cast<PCG::Fill>(_blocked_fill[i]) };
 
-				BlockedSide blocked_side{ dir, blocked_fill, _blocked_tiles };
+				BlockedSide blocked_side{ dir, blocked_fill, _blocked_tile_sets[i] };
 
 				region->blocked_sides.push_back(blocked_side);
 			} else {
 				region->free_sides.push_back(static_cast<Direction::E>(dir_i));
 			}
-		}
 
+		}
 		region->size = Size{_g_size, region->blocked_sides };
 
 		for (int dir_i : _joining_sides) {
@@ -218,19 +207,12 @@ Ref<Region> Region::create(
 		}
 
 		region->rand_length_addition = _rand_length_addition;
-
-		ERR_FAIL_COND_V_MSG(
-			internal_class_or_tile_choices.size() != internal_weights.size() ||
-			internal_class_or_tile_choices.size() != internal_alignments.size() ||
-			internal_class_or_tile_choices.size() != internal_placements.size(),
-			Ref<Region>(), "choices, weights, anchor_dirs and placements must be of equal length"
-		);
 	
-		int64_t choice_sets_size{ internal_class_or_tile_choices.size() };
+		int64_t choice_sets_size{ internal_callable_or_tile_choices.size() };
 		region->internal_choices.resize(choice_sets_size);
 
-		for (int i{ 0 }; i < internal_class_or_tile_choices.size(); ++i) {
-			Array choices{ internal_class_or_tile_choices[i] };
+		for (int i{ 0 }; i < internal_callable_or_tile_choices.size(); ++i) {
+			Array choices{ internal_callable_or_tile_choices[i] };
 			region->internal_choices[i].choice_set.resize(choices.size());
 
 			PackedFloat32Array *n_weights{ &region->internal_choices[i].norm_weights };
@@ -252,29 +234,15 @@ Ref<Region> Region::create(
 				n_weights->set(j, cum_weight);
 			}
 
-			LocalVector<Vector2i> internal_gpos_alignment;
-			internal_gpos_alignment.reserve(internal_alignments.size());
-			for (int dir_i : internal_alignments) {
-				internal_gpos_alignment.push_back(s_dir_to_gpos_alignment[dir_i]);
-			}
-			
-			for (int j{ 0 }; j < internal_gpos_alignment.size(); ++j) {
-				Vector2 gpos_alignment{ internal_gpos_alignment[j] };
-				if (m_axis == Axis::X || m_axis == Axis::ALL) {
-					gpos_alignment.x *= -1;
-				}
-				if (m_axis == Axis::Y || m_axis == Axis::ALL) {
-					gpos_alignment.y *= -1;
-				}
-				internal_gpos_alignment[j] = gpos_alignment;
-			}
-
-			PackedInt32Array internal_placement{
-				static_cast<PackedInt32Array>(internal_placements[i])
-			};
-
+			PackedInt32Array alignments{ internal_alignments[i] };
 			ERR_FAIL_COND_V_MSG(
-				internal_placement.size() != internal_gpos_alignment.size(), Ref<Region>(),
+				alignments.size() != choices.size(), Ref<Region>(),
+				vformat("%s alignments provided, expected %s", alignments.size(), choices.size())
+			);
+
+			PackedInt32Array internal_placement{ internal_placements[i] };
+			ERR_FAIL_COND_V_MSG(
+				internal_placement.size() != choices.size(), Ref<Region>(),
 				vformat("internal configs are not of the same length for %s", i)
 			);
 
@@ -285,6 +253,9 @@ Ref<Region> Region::create(
 					vformat("passed value is null for choice %d", j)
 				);
 				Variant::Type type{ variant.get_type() };
+
+				Direction::E alignment_dir{ static_cast<Direction::E>(alignments[j]) };
+				alignment_dir = Axis::mirror_direction(m_axis, alignment_dir);
 
 				if (type == Variant::DICTIONARY) {
 					Dictionary dict{ variant };
@@ -318,7 +289,7 @@ Ref<Region> Region::create(
 						InternalEntry::make_callable(
 							callable,
 							callable_g_size,
-							internal_gpos_alignment[j],
+							alignment_dir,
 							internal_placement.get(j)
 						)
 					);
@@ -336,7 +307,7 @@ Ref<Region> Region::create(
 
 					region->internal_choices[i].choice_set[j] = (
 						InternalEntry::make_tile_ref(
-							tile, internal_gpos_alignment[j], internal_placement.get(j)
+							tile, alignment_dir, internal_placement.get(j)
 						)
 					);
 
@@ -354,6 +325,9 @@ Ref<Region> Region::create(
 }
 
 void Region::finalize() {
+	ERR_FAIL_COND_MSG(primary_regions.size() <= 0, "no primary regions found");
+	ERR_FAIL_COND_MSG(secondary_regions.size() <= 0, "no secondary regions found");
+
 	std::sort(
 		primary_regions.ptr(),
 		primary_regions.ptr() + primary_regions.size(),
@@ -390,26 +364,27 @@ void Region::finalize() {
 	for (uint64_t i{ 0 }; i < primary_regions.size(); ++i) {
 		primary_weights.set(i, primary_regions[i]->spawn_weight);
 	}
-	primary_weight_sum = get_weight_sum_bounded(primary_weights, primary_weights.size());
+	primary_weight_sum = get_slot_weights_sum(Slot::PRIMARY, primary_weights.size() - 1);
 }
 
 int Region::get_slot_threshold_i(const Slot slot, const int gate) {
 	const RegionVector &regions{ slot == Slot::PRIMARY ? primary_regions : secondary_regions };
-	for (int threshold_i{ 0 }; threshold_i < secondary_regions.size(); ++threshold_i) {
+	int threshold_i{ 0 };
+	for (; threshold_i < static_cast<int>(regions.size()); ++threshold_i) {
 		if (regions[threshold_i]->threshold > gate) {
-			return threshold_i;
+			break;
 		}
 	}
-	ERR_FAIL_V_MSG(-1, "no regions found below threshold");
+	return threshold_i - 1;
 }
 
 float Region::get_slot_weights_sum(const Slot slot, const int threshold_i) {
 	const PackedFloat32Array &weights{ slot == Slot::PRIMARY ? primary_weights : secondary_weights };
 	float weights_sum = 0.0;
-	for (int64_t i = 0; i < threshold_i; ++i) {
+	for (int64_t i = 0; i <= threshold_i; ++i) {
 		weights_sum += weights[i];
 	}
-	ERR_FAIL_COND_MSG(weights_sum <= 0.0, "weight sum is <= 0.0");
+	DEV_ASSERT(weights_sum > 0.0);
 	return weights_sum;
 }
 
@@ -418,7 +393,7 @@ Ref<Region> Region::get_slot_rand_region(
 ) {
 	const PackedFloat32Array &weights{ slot == Slot::PRIMARY ? primary_weights : secondary_weights };
 	float remaining_distance = rand_float * weights_sum;
-	for (int64_t i{ 0 }; i < threshold_i; ++i) {
+	for (int64_t i{ 0 }; i <= threshold_i; ++i) {
 		remaining_distance -= weights[i];
 		if (remaining_distance < 0) {
 			const RegionVector &regions{ slot == Slot::PRIMARY ? primary_regions : secondary_regions };

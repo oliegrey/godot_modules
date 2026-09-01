@@ -10,7 +10,7 @@ public:
 	enum E { NONE = -1, X, Y, ALL };
 
 protected:
-	void _bind_methods();
+	static void _bind_methods();
 
 public:
 	static Direction::E mirror_direction(Axis::E axis, Direction::E direction);

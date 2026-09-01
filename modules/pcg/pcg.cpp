@@ -60,10 +60,9 @@ void PCG::_bind_methods() {
 			"add_tile_rect",
 			"layer_offset",
 			"tile_i",
-			"seg_gpos",
-			"g_size",
+			"rect",
 			"add_occupancy",
-			"tile_variation_rng"
+			"variation_rng"
 		),
 		&PCG::add_tile_rect,
 		DEFVAL(true), DEFVAL(Ref<RandomNumberGenerator>())
@@ -72,11 +71,10 @@ void PCG::_bind_methods() {
 		D_METHOD(
 			"add_tiles_rect",
 			"layer_offsets",
-			"tile_indexes",
-			"seg_gpos",
-			"g_size",
+			"tiles_i",
+			"rect",
 			"add_occupancy",
-			"tile_variation_rng"
+			"variation_rng"
 		),
 		&PCG::add_tiles_rect,
 		DEFVAL(true), DEFVAL(Ref<RandomNumberGenerator>())
