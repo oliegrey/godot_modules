@@ -52,14 +52,22 @@ std::array<std::array<uint64_t, 8>, 8> Zone::SizedEdgeCache::create_dominance_ma
 }
 
 int Zone::SizedEdgeCache::get_size_i(const Vector2i &p_size) {
-	if (p_size.x < 1 || p_size.x > 8 || p_size.y < 1 || p_size.y > 8) {
+	if (
+		p_size.x < 1 || p_size.x > Region::MAX_G_SIZE_X ||
+		p_size.y < 1 || p_size.y > Region::MAX_G_SIZE_Y
+	) {
 		return -1;
 	}
-	return (p_size.x - 1) * 8 + (p_size.y - 1);
+	return (p_size.x - 1) + (p_size.y - 1) * Region::MAX_G_SIZE_X;
+}
+
+// WARNING: index, not cell count
+Vector2i Zone::SizedEdgeCache::get_size(const int size_i) {
+	return Vector2i{ size_i % Region::MAX_G_SIZE_X + 1, size_i / Region::MAX_G_SIZE_X + 1 };
 }
 
 int Zone::SizedEdgeCache::get_size_or_larger_i(Direction::E dir, const Vector2i size) {
-	DEV_ASSERT(size.x <= 8 && size.y <= 8);
+	DEV_ASSERT(size.x <= 8 && size.y <= 8 && size.x > 0 && size.y > 0);
 	const uint64_t mask{ s_dominance_mask[size.x - 1][size.y - 1] };
 	const uint64_t masked_bitmap{ m_occ[dir] & mask };
 	if (masked_bitmap == 0) {
@@ -68,8 +76,9 @@ int Zone::SizedEdgeCache::get_size_or_larger_i(Direction::E dir, const Vector2i 
 	return ctz64(masked_bitmap);
 }
 
-int Zone::SizedEdgeCache::get_size_or_larger_i(Direction::E dir, const int cell_count) {
-	return get_size_or_larger_i(dir, Vector2i{ cell_count % 8, cell_count / 8 });
+// WARNING: index, not cell count
+int Zone::SizedEdgeCache::get_size_or_larger_i(Direction::E dir, const int size_i) {
+	return get_size_or_larger_i(dir, get_size(size_i));
 }
 
 void Zone::SizedEdgeCache::add_free_rects(
@@ -152,7 +161,7 @@ Ref<Zone> Zone::create(
 }
 
 void Zone::generate_primary() {
-	// get a random weighted primary region // CRASH HERE
+	// get a random weighted primary region
 	const int p_threshold_i{ Region::get_slot_threshold_i(Region::PRIMARY, m_w_seg) }; // region cutoff (uses ordered arr)
 	if (p_threshold_i == -1) {
 		return;
@@ -178,7 +187,6 @@ void Zone::generate_primary() {
 	add_region(p_region, { p_gpos, ext_size.e });
 }
 
-
 void Zone::add_region(Ref<Region> region, const Rect2i& region_rect_e) {
 	fill_blocked_sides(region->blocked_sides, region_rect_e);
 
@@ -191,16 +199,31 @@ void Zone::add_region(Ref<Region> region, const Rect2i& region_rect_e) {
 	add_free_edges_to_cache(region, region_rect_e);
 
 	if (s_is_debug) {
-		debug_region(region, region_rect_e);
+
+		Rect2i rect_i{ region_rect_e };
+
+		for (Region::BlockedSide blocked_side : region->blocked_sides) {
+			Direction::E blocked_dir{ blocked_side.direction };
+
+			if (blocked_dir == Direction::UP) {
+				rect_i.position.y -= 1;
+				++rect_i.size.y;
+			} else if (blocked_dir == Direction::DOWN) {
+				++rect_i.size.y;
+			} else if (blocked_dir == Direction::LEFT) {
+				rect_i.position.x -= 1;
+				++rect_i.size.x;
+			} else if (blocked_dir == Direction::RIGHT) {
+				++rect_i.size.x;
+			}
+		}
+
+		debug_region(region, rect_i);
 	}
 }
 
 void Zone::add_free_edges_to_cache(Ref<Region> region, const Rect2i &region_rect_e) {
-	for (int out_dir{ 0 }; out_dir < Direction::MAX; ++out_dir) {
-		if (!region->free_sides.has(static_cast<Direction::E>(out_dir))) {
-			continue;
-		}
-
+	for (Direction::E out_dir : region->free_sides) {
 		int has_blocked_origin;
 		int edge_length;
 		if (out_dir == Direction::UP || out_dir == Direction::DOWN) {
@@ -240,6 +263,10 @@ void Zone::generate_secondary() {
 		m_rng->randi_range(m_max_secondary_count / 4, m_max_secondary_count)
 	};
 
+	if (target_secondary_count == 0) {
+		return;
+	}
+
 	LocalVector<Ref<Region>> s_regions;
 	s_regions.resize(target_secondary_count);
 
@@ -269,22 +296,26 @@ void Zone::generate_secondary() {
 	for (int attempt{ 0 }; attempt < MAX_ATTEMPTS; ++attempt) {
 		const int region_count{ static_cast<int>(s_regions.size()) };
 
+		if (region_count == 0) { // everything has been placed, we can exit
+			break;
+		}
+
 		for (int i{ region_count - 1 }; i >= 0; --i) {
+			print_line(vformat("incl size of ... %s", s_sizes[i].i));
 			bool is_placed{ try_place_s_region(s_regions[i], s_sizes[i]) };
 
 			if (is_placed) {
-				s_regions[i] = s_regions[region_count - 1];
-				s_sizes[i] = s_sizes[region_count - 1];
-				s_regions.resize(region_count - 1);
-				s_sizes.resize(region_count - 1);
+				const int last_i{ static_cast<int>(s_regions.size()) - 1 };
+				s_regions[i] = s_regions[last_i];
+				s_sizes[i] = s_sizes[last_i];
+				s_regions.resize(last_i);
+				s_sizes.resize(last_i);
 			}
 		}
 	}
 }
 
 bool Zone::try_place_s_region(Ref<Region> region, const Region::Size& size) {
-	bool is_added{ false };
-
 	const LocalVector<Direction::E> &joining_sides{ region->joining_sides };
 	const int side_count{ static_cast<int>(joining_sides.size()) }; // >0 sides enforced at creations
 
@@ -295,97 +326,129 @@ bool Zone::try_place_s_region(Ref<Region> region, const Region::Size& size) {
 		const Direction::E out_dir{ joining_sides[wrapped_dir] }; 
 		const Direction::E in_dir{ Direction::invert(out_dir) };
 
-		is_added = try_add_region_from_cached(region, size, in_dir);
-
-		if (is_added) {
-			break;
+		if (
+			//try_add_region_from_cached(region, size, in_dir) ||
+			try_add_region_from_search(region, size, in_dir)
+		) {
+			return true;
 		}
-
-		is_added = try_add_region_from_search(region, size, in_dir);
 	}
 
-	return is_added;
+	return false;
 }
 
 bool Zone::try_add_region_from_cached(
 	Ref<Region> region, const Region::Size &size, const Direction::E in_dir
 ) {
-	bool is_added{ false };
-
-	const int min_cell_count{ size.i.x * size.i.y };
+	const int min_size_i{ SizedEdgeCache::get_size_i(size.i) };
 	// advance larger and larger until at the max or nothing is found
-	for (int size_cell_i{ min_cell_count }; size_cell_i < Region::MAX_CELL_COUNT; ++size_cell_i) {
-		size_cell_i = m_sized_edge_cache.get_size_or_larger_i(in_dir, size_cell_i);
-		if (size_cell_i == -1) {
+	for (int size_i{ min_size_i }; size_i < Region::MAX_CELL_COUNT; ++size_i) {
+
+		const Vector2i free_size{ SizedEdgeCache::get_size(size_i) };
+		size_i = m_sized_edge_cache.get_size_or_larger_i(in_dir, free_size);
+
+		if (size_i == -1) {
 			break;
 		}
 
 		// for every free grid position at this size in this direction
-		const Vector2i free_size{
-			(size_cell_i % Region::MAX_G_SIZE_X) + 1, (size_cell_i / Region::MAX_G_SIZE_X) + 1
-		};
-		const LocalVector<Vector2i> &free_gpos_arr{ m_sized_edge_cache.get_gpos(in_dir, size_cell_i) };
+		const LocalVector<Vector2i> &free_gpos_arr{ m_sized_edge_cache.get_gpos(in_dir, size_i) };
+		Rect2i free_rect{ Vector2i(0, 0), SizedEdgeCache::get_size(size_i) };
 
 		// iterate backwards so we can safely remove items as we go
-		for (int rect_i{ static_cast<int>(free_gpos_arr.size()) - 1 }; rect_i > 0; --rect_i) {
-				
-			// get and move free grid position from region edge to top left of free rect
-			Vector2i free_gpos{ free_gpos_arr[rect_i] };
-			if (in_dir == Direction::DOWN) {
-				free_gpos.y -= free_size.y - 1;
+		for (int rect_i{ static_cast<int>(free_gpos_arr.size()) - 1 }; rect_i >= 0; --rect_i) {
+			free_rect.position = free_gpos_arr[rect_i];
+
+			// get and move free grid position from anchored edge to top left of free rect
+			if (in_dir == Direction::UP) {
+				free_rect.position.y -= free_rect.size.y - 1;
 			} else if (in_dir == Direction::LEFT) {
-				free_gpos.x -= free_size.x - 1;
+				free_rect.position.x -= free_rect.size.x - 1;
 			}
 
-			is_added = try_add_anchored_region(region, free_gpos, size, in_dir);
-			m_sized_edge_cache.remove_free_rect(in_dir, size_cell_i, rect_i); // in every case, the edge is consumed
+			const bool is_added{ try_add_anchored_region(region, free_rect, size, in_dir) };
+			m_sized_edge_cache.remove_free_rect(in_dir, size_i, rect_i); // in every case, the edge is consumed
 			if (is_added) {
-				break;
+				return true;
 			}
 		}
 	}
 
-	return is_added;
+	return false;
 }
 
 // consumes edge if it is not free to use, adds new smaller areas if possible
 // removes the final edge element if not free
 bool Zone::try_add_anchored_region(
 	Ref<Region> region,
-	const Vector2i &free_rect_gpos,
+	const Rect2i &free_rect,
 	const Region::Size &size,
 	Direction::E in_dir
 ) {
 	// check that it is free (fast if it is free and prevents overlapping regions for rechecks)
-	LocalVector<Rect2i> free_rects{
-		m_occ->find_largest_anchored_areas_in_area(free_rect_gpos, size.i, in_dir, m_rng, size.i)
+	LocalVector<Rect2i> free_rects_i{
+		m_occ->find_largest_anchored_areas_in_area(
+			free_rect.position, free_rect.size, Direction::invert(in_dir), m_rng, size.i
+		)
 	};
 
-	bool is_free{ free_rects[0].size == size.i };
+	if (free_rects_i.size() == 0) {
+		return false;
+	}
+
+	bool is_free{ free_rects_i[0].size == size.i };
 
 	if (is_free) {
-		Vector2i placement_position{ free_rects[0].position };
+		const Vector2i &gpos_inc{ free_rects_i[0].position };
+		Rect2i region_rect{ anchored_pos_to_region_rect(gpos_inc, size, in_dir, region) };
 
-		// move from free edge position to placement position
-		if (in_dir == Direction::DOWN) {
-			placement_position.y -= size.i.y - 1;
-		} else if (in_dir == Direction::LEFT) {
-			placement_position.x -= size.i.x - 1;
-		}
-		
-		add_region(region, { placement_position, size.e });
+		add_region(region, region_rect);
 	}
 
 	// if more than one free size found add all from the beginning or after exact match
 	const int start_i{ static_cast<int>(is_free) };
-	const int free_rects_size{ static_cast<int>(free_rects.size()) };
+	const int free_rects_size{ static_cast<int>(free_rects_i.size()) };
 	if (free_rects_size > start_i) {
-		m_sized_edge_cache.add_free_rects(in_dir, free_rects, start_i);
+		m_sized_edge_cache.add_free_rects(in_dir, free_rects_i, start_i);
 	}
 
 	return is_free;
 }
 
+// Converts an inclusive anchored position (as returned by find_largest_anchored_areas_in_area)
+// into the exclusive top-left rect that add_region expects, accounting for blocked sides.
+Rect2i Zone::anchored_pos_to_region_rect(
+	const Vector2i &anchored_pos_inc,
+	const Region::Size &region_size,
+	Direction::E in_dir,
+	Ref<Region> region
+) {
+	const int edge_axis{ in_dir / 2 };
+	const int extent_axis{ 1 - edge_axis };
+	const Direction::E origin_dir{ edge_axis == Axis::X ? Direction::LEFT : Direction::UP };
+
+	Vector2i region_gpos_e{ anchored_pos_inc };
+
+	if (in_dir == Direction::UP) {
+		region_gpos_e.y -= region_size.e.y - 1;
+	} else if (in_dir == Direction::LEFT) {
+		region_gpos_e.x -= region_size.e.x - 1;
+	}
+
+	if (!region->free_sides.has(origin_dir)) {
+		region_gpos_e[edge_axis] += 1;
+	}
+
+	const Direction::E out_dir{ Direction::invert(in_dir) };
+	if (!region->free_sides.has(out_dir)) {
+		const int polarity{ 1 - (out_dir % 2) * 2 };
+		region_gpos_e[extent_axis] += polarity;
+	}
+
+	return { region_gpos_e, region_size.e };
+}
+
+// in direction for region we are placing
 bool Zone::try_add_region_from_search(
 	Ref<Region> region, const Region::Size &size, const Direction::E in_dir
 ) {
@@ -394,60 +457,90 @@ bool Zone::try_add_region_from_search(
 	// iterate backwards so we can swap remove items from the end without issues
 	for (int p_i{ static_cast<int>(edges.size()) - 1 }; p_i >= 0 ; --p_i) {
 		const Edge &edge{ edges[p_i] };
+
+		const int edge_axis{ in_dir / 2 }; // up/down = x, left/right = y
+		const int extent_axis{ 1 - edge_axis };
+		const Direction::E origin_dir{ edge_axis == Axis::X ? Direction::LEFT : Direction::UP }; // up/down = left, left/right = up
+
+		// work out the maximum search size with the correct origin (edge.length is exclusive)
 		Vector2i search_size{ Region::MAX_G_SIZE_X, Region::MAX_G_SIZE_Y };
+		search_size[edge_axis] = region->size.i[edge_axis] + region->size.e[edge_axis] - 2 + edge.length;
+
+		const int has_blocked_origin{ static_cast<int>(!region->free_sides.has(origin_dir)) };
+
 		Vector2i search_origin{ edge.gpos };
+		search_origin[edge_axis] -= region->size.e[edge_axis] - 1 + has_blocked_origin;
 
-		int axis{ in_dir / 2 };
-		search_size[axis] = region->size.i[axis] + region->size.e[axis] - 2 + edge.length;
-		search_origin[axis] -= region->size.e[axis] - edge.has_blocked_origin; // origin should be along edge as histogram is agnostic
+		if (in_dir == Direction::LEFT || in_dir == Direction::UP) {
+			search_origin[extent_axis] -= 7;
+		}
 
+		// clamp the search origin and adjust the search size to reflect it
+		for (int axis_i{ 0 }; axis_i <= 1; ++axis_i) {
+			if (search_origin[axis_i] < 0) {
+				search_size[axis_i] += search_origin[axis_i];
+				search_origin[axis_i] = 0;
+			}
+			else {
+				const int end_axis_i{ search_origin[axis_i] + search_size[axis_i] - 1 };
+				const int overhang_delta{ end_axis_i - s_seg_g_size[axis_i] };
+				if (overhang_delta > 0) {
+					search_size[axis_i] -= overhang_delta;
+				}
+			}
+		}
+
+		// check the resulting size after clamping
+		if (search_size.x <= 0 || search_size.y <= 0) {
+			edges[p_i] = edges[edges.size() - 1];
+			edges.resize(edges.size() - 1);
+			continue;
+		}
+
+		// result position is along the edge
 		LocalVector<Rect2i> free_rects_i{
 			m_occ->find_largest_anchored_areas_in_area(
-				search_origin, search_size, in_dir, m_rng, size.i
+				search_origin, search_size, Direction::invert(in_dir), m_rng, size.i
 			)
 		};
 
-		// edge is always consumed: either added to size cache, used or unusable
-		edges[p_i] = edges[edges.size() - 1];
-		edges.resize(edges.size() - 1);
+		// no free space found, remove edge
+		if (free_rects_i.size() == 0) {
+			edges[p_i] = edges[edges.size() - 1];
+			edges.resize(edges.size() - 1);
+			continue;
+		}
+
+		//// edge is always consumed: either added to size cache, used or unusable
+		//edges[p_i] = edges[edges.size() - 1];
+		//edges.resize(edges.size() - 1);
 
 		// there is enough room for region
 		if (free_rects_i[0].size == size.i) {
 
-			// histogram returns anchored position so we must transform it to the exclusive region position
-			Vector2i region_gpos_e{ free_rects_i[0].position };
-			if (in_dir == Direction::DOWN) {
-				region_gpos_e.y -= size.e.y - 1;
-			} else if (in_dir == Direction::RIGHT) {
-				region_gpos_e.x -= size.e.x - 1;
-			}
-			if (axis == 0 && !region->free_sides.has(Direction::LEFT)) {
-				++region_gpos_e.x;
-			}
-			else if (axis == 1 && !region->free_sides.has(Direction::UP)) {
-				++region_gpos_e.y;
-			}
+			const Vector2i &gpos_inc{ free_rects_i[0].position };
+			Rect2i region_rect{ anchored_pos_to_region_rect(gpos_inc, size, in_dir, region) };
 
-			add_region(region, Rect2i{ region_gpos_e, size.e });
-
-			// we found remaining fractional space
-			if (free_rects_i.size() > 1) {
-				m_sized_edge_cache.add_free_rects(in_dir, free_rects_i, 1);
-			}
+			add_region(region, region_rect);
 			return true;
+
+			//// we found remaining fractional space
+			//if (free_rects_i.size() > 1) {
+			//	m_sized_edge_cache.add_free_rects(in_dir, free_rects_i, 1);
+			//}
+			//return true;
 		}
-		// we ONLY found fractional space
-		else if (free_rects_i.size() > 0) {
-			m_sized_edge_cache.add_free_rects(in_dir, free_rects_i, 0);
-		}
+		//// we ONLY found fractional space
+		//else if (free_rects_i.size() > 0) {
+		//	m_sized_edge_cache.add_free_rects(in_dir, free_rects_i, 0);
+		//}
 	}
 
 	return false;
 }
 
 void Zone::fill_blocked_sides(
-	const LocalVector<Region::BlockedSide> &blocked_sides,
-	const Rect2i &region_rect_e
+	const LocalVector<Region::BlockedSide> &blocked_sides, const Rect2i &region_rect_e
 ) {
 	const int side_count{ static_cast<int>(blocked_sides.size()) };
 	const int corner_count{ side_count * side_count / 4 };
@@ -482,28 +575,40 @@ void Zone::fill_blocked_sides(
 	}
 	if ((corner_bitmap & 0b0101) == 0b0101) { // top left corner
 		Vector2i corner_gpos{ region_rect_e.position + Vector2i{ -1, -1 } };
-		fill_corner(blocked_sides, corner_gpos);
+		Direction::E tile_side{ m_rng->randi_range(0, 1) ? Direction::UP : Direction::LEFT };
+		fill_corner(blocked_sides, corner_gpos, tile_side);
 	}
 	if ((corner_bitmap & 0b0110) == 0b0110) { // bottom left corner
 		Vector2i corner_gpos{ region_rect_e.position + Vector2i{ -1, region_rect_e.size.y } };
-		fill_corner(blocked_sides, corner_gpos);
+		Direction::E tile_side{ m_rng->randi_range(0, 1) ? Direction::DOWN : Direction::LEFT };
+		fill_corner(blocked_sides, corner_gpos, tile_side);
 	}
 	if ((corner_bitmap & 0b1010) == 0b1010) { // bottom right corner
 		Vector2i corner_gpos{ region_rect_e.position + region_rect_e.size };
-		fill_corner(blocked_sides, corner_gpos);
+		Direction::E tile_side{ m_rng->randi_range(0, 1) ? Direction::DOWN : Direction::RIGHT };
+		fill_corner(blocked_sides, corner_gpos, tile_side);
 	}
 	if ((corner_bitmap & 0b1001) == 0b1001) { // top right corner
 		Vector2i corner_gpos{ region_rect_e.position + Vector2i{ region_rect_e.size.x, -1 } };
-		fill_corner(blocked_sides, corner_gpos);
+		Direction::E tile_side{ m_rng->randi_range(0, 1) ? Direction::UP : Direction::RIGHT };
+		fill_corner(blocked_sides, corner_gpos, tile_side);
 	}
 }
 
+// given a corners corrosponding sides, picks a random tile from either or no tile at all
 void Zone::fill_corner(
-	const LocalVector<Region::BlockedSide> &blocked_sides, const Vector2i& corner_gpos
+	const LocalVector<Region::BlockedSide> &blocked_sides,
+	const Vector2i& corner_gpos,
+	Direction::E tile_side
 ) {
-	const int i{ m_rng->randi_range(0, 1) ? Direction::UP : Direction::LEFT };
-	const LocalVector<Ref<Tile>> &tiles{ blocked_sides[i].tiles };
-	m_pcg->rand_fill_rect(m_rng, PCG::Fill::PICK_ONE, tiles, { corner_gpos, { 1, 1 } }, true);
+	for (Region::BlockedSide blocked_side : blocked_sides) {
+		if (blocked_side.direction == tile_side) {
+			const LocalVector<Ref<Tile>> &tiles{ blocked_side.tiles };
+			m_pcg->rand_fill_rect(m_rng, PCG::Fill::PICK_ONE, tiles, { corner_gpos, { 1, 1 } }, true);
+			return;
+		}
+	}
+	ERR_FAIL_MSG(vformat("tile_side not found %s", tile_side));
 }
 
 void Zone::fill_internal(Ref<Region> region, const Rect2i &region_rect_e) {
@@ -527,22 +632,12 @@ void Zone::fill_internal(Ref<Region> region, const Rect2i &region_rect_e) {
 
 		if (choice.placement == Region::Placement::FORCE_GPOS) {
 			Vector2i gpos{ region_rect_e.position };
-			if (choice.gpos_alignment.x < 0) {
-				gpos.x += region_rect_e.size.x;
-			}
-			else {
-				gpos.x -= 1;
-			}
 
-			if (choice.gpos_alignment.y < 0) {
-				gpos.y += region_rect_e.size.y;
-			}
-			else {
-				gpos.y -= 1;
-			}
-
+			// depending on the polarity of gpos, start from opposite side
+			gpos.x += (choice.gpos_alignment.x < 0) ? region_rect_e.size.x : -1;
+			gpos.y += (choice.gpos_alignment.y < 0) ? region_rect_e.size.y : -1;
 			gpos += choice.gpos_alignment;
-			
+
 			if (choice.type == Region::InternalEntry::TYPE_CALLABLE) {
 				choice.callable.call(gpos);
 			} else {
@@ -574,6 +669,14 @@ void Zone::fill_internal(Ref<Region> region, const Rect2i &region_rect_e) {
 			}
 
 			continue;
+
+		} else if (choice.placement == Region::Placement::START) {
+			if (choice.alignment == Direction::DOWN) {
+				seg_placement_gpos.y += region_rect_e.size.y - choice.size.y;
+			}
+			else if (choice.alignment == Direction::RIGHT) {
+				seg_placement_gpos.x += region_rect_e.size.x - choice.size.x;
+			}
 
 		} else if (choice.placement == Region::Placement::CENTER) {
 			if (choice.alignment == Direction::NONE) {
@@ -633,15 +736,8 @@ void Zone::fill_internal(Ref<Region> region, const Rect2i &region_rect_e) {
 				m_pcg->add_gpos_tile(l_offset, choice.tile->tile, unset_gpos, true, m_rng);
 			}
 			continue;
-
-		} else if (choice.placement == Region::Placement::START) {
-			if (choice.alignment == Direction::DOWN) {
-				seg_placement_gpos.y += region_rect_e.size.y - choice.size.y;
-			}
-			else if (choice.alignment == Direction::RIGHT) {
-				seg_placement_gpos.x += region_rect_e.size.x - choice.size.x;
-			}
 		}
+		
 		try_place_internal(choice, region_rect_e.position + seg_placement_gpos);
 	}
 }
@@ -671,7 +767,8 @@ void Zone::debug_region(Ref<Region> region, const Rect2i &region_rect_inc) const
 	size.y = region_rect_inc.size.y * 50;
 
 	uint32_t h{ region->name.hash() };
-	Color color{ ((h & 0xFF)) / 255.0f, ((h >> 8) & 0xFF) / 255.0f, ((h >> 16) & 0xFF) / 255.0f, 0.20f };
+	float hue{ (h % 360) / 360.0f };
+	Color color{ Color::from_hsv(hue, 0.65f, 0.95f, 0.2f) };
 
 	ColorRect *rect{ memnew(ColorRect) };
 	rect->set_color(color);

@@ -7,13 +7,14 @@ class Axis : public RefCounted {
 	GDCLASS(Axis, RefCounted);
 
 public:
-	enum E { NONE = -1, X, Y, ALL };
+	enum E { NONE = -1, X = 0, Y = 1, ALL = 2 };
 
 protected:
 	static void _bind_methods();
 
 public:
 	static Direction::E mirror_direction(Axis::E axis, Direction::E direction);
+	static Vector2i mirror_alignment(Axis::E axis, Vector2i v);
 };
 
 VARIANT_ENUM_CAST(Axis::E)

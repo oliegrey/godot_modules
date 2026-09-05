@@ -46,32 +46,48 @@ public:
 		static InternalEntry make_callable(
 			const Callable &_callable,
 			const Vector2i &_size,
-			const Direction::E _alignment_dir,
+			const Variant _alignment,
 			const int32_t _placement
 		) {
 			InternalEntry e;
 			e.type = TYPE_CALLABLE;
 			e.callable = _callable;
 			e.size = _size;
-			e.alignment = _alignment_dir;
-			e.gpos_alignment = Vector2i(s_dir_to_gpos_alignment[_alignment_dir]);
+			init_alignment(e, _alignment);
 			e.placement = _placement;
+			print_line(vformat("placement set to %s", e.placement));
 			return e;
 		}
 
 		static InternalEntry make_tile_ref(
-			Ref<Tile> tile,
-			const Direction::E _alignment_dir,
-			const int32_t p_placement
+			Ref<Tile> tile, const Variant _alignment, const int32_t p_placement
 		) {
 			InternalEntry e;
 			e.type = TYPE_TILE_REF;
 			e.tile = tile;
 			e.size = tile->g_size;
-			e.alignment = _alignment_dir;
-			e.gpos_alignment = Vector2i(s_dir_to_gpos_alignment[_alignment_dir]);
+			init_alignment(e, _alignment);
 			e.placement = p_placement;
+			print_line(vformat("placement set to %s", e.placement));
 			return e;
+		}
+
+		static void init_alignment(InternalEntry &e, const Variant _alignment) {
+			if (_alignment.get_type() == Variant::INT) {
+				const int alignment_i{ _alignment };
+				Direction::E alignment{ static_cast<Direction::E>(alignment_i) };
+				e.alignment = alignment;
+				if (alignment != Direction::NONE && alignment != Direction::MAX) {
+					e.gpos_alignment = Vector2i(s_dir_to_gpos_alignment[alignment]);
+				}
+
+			} else if (_alignment.get_type() == Variant::VECTOR2I) {
+				e.alignment = Direction::NONE;
+				e.gpos_alignment = _alignment;
+
+			} else {
+				ERR_FAIL_MSG(vformat("passed alignment type (%s) is incompatible", _alignment.get_type()));
+			}
 		}
 	};
 
@@ -92,6 +108,7 @@ public:
 
 		BlockedSide(Direction::E _direction, PCG::Fill _fill, PackedInt32Array _tiles)
 		: direction{ _direction }, fill{ _fill } {
+			tiles.resize(_tiles.size());
 			for (int i{ 0 }; i < _tiles.size(); ++i) {
 				const int tile_i{ _tiles[i] };
 				ERR_FAIL_INDEX(tile_i, Tile::MAX_TILE);
@@ -205,11 +222,11 @@ public:
 
 		TypedArray<Array> internal_callable_or_tile_choices,
 		TypedArray<PackedInt32Array> internal_weights,
-		TypedArray<PackedInt32Array> internal_alignments,
+		TypedArray<Array> internal_alignments,
 		TypedArray<PackedInt32Array> internal_placements,
 
-		Vector2i _rand_length_addition,
-		Axis::E mirror_axes
+		Vector2i _rand_length_addition = Vector2i(0, 0),
+		Axis::E mirror_axes = Axis::NONE
 	);
 
 	static void finalize();

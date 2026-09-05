@@ -113,7 +113,7 @@ Ref<Region> Region::create(
 
 	TypedArray<Array> internal_callable_or_tile_choices,
 	TypedArray<PackedInt32Array> internal_weights,
-	TypedArray<PackedInt32Array> internal_alignments, // directions
+	TypedArray<Array> internal_alignments, // directions or gpos
 	TypedArray<PackedInt32Array> internal_placements,
 
 	Vector2i _rand_length_addition,
@@ -139,7 +139,7 @@ Ref<Region> Region::create(
 	);
 
 	ERR_FAIL_COND_V_MSG(
-		_blocked_sides.size() != _blocked_fill.size() &&
+		_blocked_sides.size() != _blocked_fill.size() ||
 		_blocked_tile_sets.size() != _blocked_fill.size(),
 		Ref<Region>(),
 		vformat(
@@ -166,28 +166,49 @@ Ref<Region> Region::create(
 	for (Axis::E m_axis : all_mirror_axes) {
 		region.instantiate();
 
-		region->name             = _name + String::num_int64(m_axis);
-		region->slot             = _slot;
+		region->name = _name + String::num_int64(m_axis);
+		region->slot = _slot;
 
-		region->free_sides.reserve(Direction::MAX - _blocked_sides.size());
+		const int64_t free_side_count{ Direction::MAX - _blocked_sides.size() };
+		ERR_FAIL_COND_V_MSG(
+			free_side_count <= 0, Ref<Region>(),
+			vformat("region has no free sides (count: %s)", free_side_count)
+		);
+		region->free_sides.reserve(free_side_count);
 
-		for (int i{ 0 }; i < _blocked_sides.size(); ++i) {
-			const int dir_i{ _blocked_sides[i] };
+		for (int dir_i{ 0 }; dir_i < Direction::MAX; ++dir_i) {
+			const int64_t blocked_i{ _blocked_sides.find(dir_i) };
+			Direction::E dir{ static_cast<Direction::E>(dir_i) };
+			dir = Axis::mirror_direction(m_axis, dir);
 
-			if (_blocked_sides.has(dir_i)) {
-				Direction::E dir{ static_cast<Direction::E>(dir_i) };
-				dir = Axis::mirror_direction(m_axis, dir);
+			if (blocked_i != -1) {
 
-				PCG::Fill blocked_fill{ static_cast<PCG::Fill>(_blocked_fill[i]) };
+				ERR_FAIL_INDEX_V(blocked_i, _blocked_fill.size(), Ref<Region>());
+				ERR_FAIL_INDEX_V(blocked_i, _blocked_tile_sets.size(), Ref<Region>());
 
-				BlockedSide blocked_side{ dir, blocked_fill, _blocked_tile_sets[i] };
+				
+
+				PCG::Fill blocked_fill{ static_cast<PCG::Fill>(_blocked_fill[blocked_i]) };
+
+				BlockedSide blocked_side{
+					dir, blocked_fill, static_cast<PackedInt32Array>(_blocked_tile_sets[blocked_i])
+				};
 
 				region->blocked_sides.push_back(blocked_side);
+
 			} else {
-				region->free_sides.push_back(static_cast<Direction::E>(dir_i));
+				region->free_sides.push_back(static_cast<Direction::E>(dir));
 			}
 
 		}
+
+		ERR_FAIL_COND_V_MSG(
+			region->blocked_sides.size() != _blocked_sides.size(), Ref<Region>(),
+			"blocked_sides constructed with fewer members than expected"
+		);
+
+		/// silent crash before this point
+
 		region->size = Size{_g_size, region->blocked_sides };
 
 		for (int dir_i : _joining_sides) {
@@ -208,10 +229,10 @@ Ref<Region> Region::create(
 
 		region->rand_length_addition = _rand_length_addition;
 	
-		int64_t choice_sets_size{ internal_callable_or_tile_choices.size() };
+		const int64_t choice_sets_size{ internal_callable_or_tile_choices.size() };
 		region->internal_choices.resize(choice_sets_size);
 
-		for (int i{ 0 }; i < internal_callable_or_tile_choices.size(); ++i) {
+		for (int i{ 0 }; i < choice_sets_size; ++i) {
 			Array choices{ internal_callable_or_tile_choices[i] };
 			region->internal_choices[i].choice_set.resize(choices.size());
 
@@ -234,13 +255,13 @@ Ref<Region> Region::create(
 				n_weights->set(j, cum_weight);
 			}
 
-			PackedInt32Array alignments{ internal_alignments[i] };
+			Array alignments{ internal_alignments[i] };
 			ERR_FAIL_COND_V_MSG(
 				alignments.size() != choices.size(), Ref<Region>(),
 				vformat("%s alignments provided, expected %s", alignments.size(), choices.size())
 			);
 
-			PackedInt32Array internal_placement{ internal_placements[i] };
+			PackedInt32Array internal_placement{ static_cast<PackedInt32Array>(internal_placements[i]) };
 			ERR_FAIL_COND_V_MSG(
 				internal_placement.size() != choices.size(), Ref<Region>(),
 				vformat("internal configs are not of the same length for %s", i)
@@ -253,9 +274,6 @@ Ref<Region> Region::create(
 					vformat("passed value is null for choice %d", j)
 				);
 				Variant::Type type{ variant.get_type() };
-
-				Direction::E alignment_dir{ static_cast<Direction::E>(alignments[j]) };
-				alignment_dir = Axis::mirror_direction(m_axis, alignment_dir);
 
 				if (type == Variant::DICTIONARY) {
 					Dictionary dict{ variant };
@@ -285,12 +303,29 @@ Ref<Region> Region::create(
 						vformat("callable_g_size(%s) is larger than region _g_size(%s)", callable_g_size, _g_size)
 					);
 
+					Variant alignment{ alignments[j] };
+					if (alignments[j].get_type() == Variant::INT) {
+						int alignment_i{ alignment };
+						alignment = Axis::mirror_direction(m_axis, static_cast<Direction::E>(alignment_i));
+
+					} else if (alignments[j].get_type() == Variant::VECTOR2I) {
+						Vector2i alignment_v{ alignment };
+						alignment = Axis::mirror_alignment(m_axis, alignment_v);
+						print_line(vformat("mirrored alignment for %s is %s, original is %s", region->name, alignment, alignment_v));
+
+					} else {
+						ERR_FAIL_V_MSG(
+							Ref<Region>(),
+							vformat(
+								"type provided for %s alignments pos %s is invalid %s",
+								region->name, j, alignments[j].get_type()
+							)
+						);
+					}
+
 					region->internal_choices[i].choice_set[j] = (
 						InternalEntry::make_callable(
-							callable,
-							callable_g_size,
-							alignment_dir,
-							internal_placement.get(j)
+							callable, callable_g_size, alignment, internal_placement.get(j)
 						)
 					);
 				}
@@ -302,13 +337,31 @@ Ref<Region> Region::create(
 						vformat("not valid tile enum or dictionary for entry %d of %s", j, _name)
 					);
 					ERR_FAIL_COND_V_MSG(
-						tile->g_size.x <= 0 && tile->g_size.y <= 0, Ref<Region>(), "tile area is zero"
+						tile->g_size.x <= 0 || tile->g_size.y <= 0, Ref<Region>(), "tile area is zero"
 					);
 
+					Variant alignment{ alignments[j] };
+					if (alignments[j].get_type() == Variant::INT) {
+						int alignment_i{ alignment };
+						alignment = Axis::mirror_direction(m_axis, static_cast<Direction::E>(alignment_i));
+
+					} else if (alignments[j].get_type() == Variant::VECTOR2I) {
+						Vector2i alignment_v{ alignment };
+						alignment = Axis::mirror_alignment(m_axis, alignment_v);
+						print_line(vformat("mirrored alignment for %s is %s, original is %s", region->name, alignment, alignment_v));
+
+					} else {
+						ERR_FAIL_V_MSG(
+							Ref<Region>(),
+							vformat(
+								"type provided for %s alignments pos %s is invalid %s",
+								region->name, j, alignments[j].get_type()
+							)
+						);
+					}
+
 					region->internal_choices[i].choice_set[j] = (
-						InternalEntry::make_tile_ref(
-							tile, alignment_dir, internal_placement.get(j)
-						)
+						InternalEntry::make_tile_ref(tile, alignment, internal_placement.get(j))
 					);
 
 				} else {

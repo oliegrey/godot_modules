@@ -17,3 +17,13 @@ Direction::E Axis::mirror_direction(Axis::E axis, Direction::E direction) {
 	}
 	return direction;
 }
+
+Vector2i Axis::mirror_alignment(Axis::E axis, Vector2i v) {
+	if (axis == Axis::X) {
+		v.x *= -1;
+	}
+	if (axis == Axis::Y) {
+		v.y *= -1;
+	}
+	return v;
+}

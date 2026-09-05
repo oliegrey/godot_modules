@@ -33,6 +33,7 @@
 #ifndef MODULES_TESTS_GEN_H
 #define MODULES_TESTS_GEN_H
 
+#include "modules/zone/tests/test_zone.h"
 #include "modules/region/tests/test_region.h"
 #include "modules/regex/tests/test_regex.h"
 #include "modules/noise/tests/test_fastnoise_lite.h"

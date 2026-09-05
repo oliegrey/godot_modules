@@ -235,7 +235,7 @@ void BitGrid2D::set_rect(const Rect2i &rect) {
 	);
 
 	uint8_t *data = bitmap.ptrw();
-	for (int y{ rect.position.y }; y < rect.position.y + rect.position.y; y++) {
+	for (int y{ rect.position.y }; y < rect.position.y + rect.size.y; y++) {
 		for (int x{ rect.position.x }; x < rect.position.x + rect.size.x; x++) {
 			const int cell_i{ gpos_to_cell_i(Vector2i(x, y)) };
 			data[cell_i / 8] |= 1 << (cell_i % 8);
