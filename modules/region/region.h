@@ -55,7 +55,6 @@ public:
 			e.size = _size;
 			init_alignment(e, _alignment);
 			e.placement = _placement;
-			print_line(vformat("placement set to %s", e.placement));
 			return e;
 		}
 
@@ -65,10 +64,9 @@ public:
 			InternalEntry e;
 			e.type = TYPE_TILE_REF;
 			e.tile = tile;
-			e.size = tile->g_size;
+			e.size = tile.is_valid() ? tile->g_size : Vector2i();
 			init_alignment(e, _alignment);
 			e.placement = p_placement;
-			print_line(vformat("placement set to %s", e.placement));
 			return e;
 		}
 

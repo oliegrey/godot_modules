@@ -628,6 +628,10 @@ void Zone::fill_internal(Ref<Region> region, const Rect2i &region_rect_e) {
 		ERR_FAIL_INDEX(choice_i, static_cast<int>(choice_sets.choice_set.size()));
 		Region::InternalEntry choice{ choice_sets.choice_set[choice_i] };
 
+		if (choice.type != Region::InternalEntry::TYPE_CALLABLE && choice.tile == Ref<Tile>()) {
+			continue;
+		}
+
 		Vector2i seg_placement_gpos{ 0, 0 };
 
 		if (choice.placement == Region::Placement::FORCE_GPOS) {

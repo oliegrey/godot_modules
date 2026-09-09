@@ -26,9 +26,9 @@ Tile::Tile(
 
     state_atlas_coords.resize(states.size());
     for (uint32_t i = 0; i < states.size(); i++) {
-        state_atlas_coords[i].x = state_frame_ranges[i].x * BASE_SIZE;
+        state_atlas_coords[i].x = state_frame_ranges[i].x;
         state_atlas_coords[i].y = prev_atlas_coord_y;
-        atlas_coord_to_tile[layer][state_atlas_coords[i]] = tile;
+        atlas_coord_to_tile[layer][state_atlas_coords[i]] = this;
     }
     prev_atlas_coord_y = state_atlas_coords[0].y + g_size.y;
 }
@@ -97,6 +97,9 @@ void Tile::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_foreground"), &Tile::get_foreground);
     ClassDB::bind_method(D_METHOD("get_variation", "rng"), &Tile::get_variation);
     ClassDB::bind_method(D_METHOD("get_atlas_coords", "state"), &Tile::get_atlas_coords, DEFVAL(Tile::MAX_STATE));
+    
+    ClassDB::bind_method(D_METHOD("set_hardness", "_hardness"), &Tile::set_hardness);
+    ClassDB::bind_method(D_METHOD("set_particle", "_particle"), &Tile::set_particle);
     
     ClassDB::bind_static_method("Tile", D_METHOD("get_layer_name", "layer_i"), &Tile::get_layer_name);
     

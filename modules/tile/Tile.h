@@ -110,8 +110,8 @@ public:
     inline static std::array<int, MAX_TILE> random_group_lengths;
     inline static std::array<Vector2i, MAX_TILE> tile_sizes;
     
-    Layer layer;
-    int tile;
+    Layer layer = BACKGROUND;
+    int tile = 0;
     String name;
     LocalVector<State> states;
     LocalVector<Vector2i> state_frame_ranges;
@@ -120,17 +120,21 @@ public:
     Vector2i g_size;
     int linked_foreground_i = -1;
     int random_group_length = -1;
+    int hardness = 0;
+    int particle = -1;
     
 public: 
-    inline static Ref<Tile> get_atlas_coord_tile(Layer layer_i, Vector2i atlas_coord);
+    static Ref<Tile> get_atlas_coord_tile(Layer layer_i, Vector2i atlas_coord);
     static void init_layer_configs();
     static Ref<Tile> get_tile(int tile);
-    inline static String get_layer_name(Layer layer_i);
-    inline static const LocalVector<Ref<Tile>> &get_layer(Layer layer_i);
-    inline static TypedArray<Tile> get_layer_tiles(Tile::Layer layer_i);
+    static String get_layer_name(Layer layer_i);
+    static const LocalVector<Ref<Tile>> &get_layer(Layer layer_i);
+    static TypedArray<Tile> get_layer_tiles(Tile::Layer layer_i);
     static int get_variation_i(Ref<RandomNumberGenerator> rng, int tile_i);
     static Vector2i get_tile_size(int tile_i);
     
+    void set_hardness(const int _hardness) { hardness = _hardness; }
+    void set_particle(const int _particle) { particle = _particle; }
     virtual String to_string() override { 
         return vformat("Tile(tile_name:%s, tile_i:%d)", name, tile); 
     }

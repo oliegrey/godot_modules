@@ -269,6 +269,9 @@ void PCG::add_cell_i(
 	bool add_occupancy,
 	const Vector2i &anchor_dist
 ) {
+	if (tile_i < 0 || tile_i >= Tile::MAX_TILE) {
+		return;
+	}
 	add_tile_data(layer_cell_i, tile_i);
 	add_anchor_dist(layer_cell_i, anchor_dist);
 	if (add_occupancy) { add_generative_occupancy(cell_i); }

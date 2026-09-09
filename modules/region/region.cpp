@@ -207,8 +207,6 @@ Ref<Region> Region::create(
 			"blocked_sides constructed with fewer members than expected"
 		);
 
-		/// silent crash before this point
-
 		region->size = Size{_g_size, region->blocked_sides };
 
 		for (int dir_i : _joining_sides) {
@@ -331,7 +329,15 @@ Ref<Region> Region::create(
 				}
 
 				else if (type == Variant::INT) {
-					Ref<Tile> tile{ Tile::get_tile(variant) };
+					const int tile_i{ variant };
+					if (tile_i == Tile::MAX_TILE) {
+						region->internal_choices[i].choice_set[j] = (
+							InternalEntry::make_tile_ref(Ref<Tile>(), 0, 0)
+						);
+						continue;
+					}
+
+					Ref<Tile> tile{ Tile::get_tile(tile_i) };
 					ERR_FAIL_NULL_V_MSG(
 						tile, Ref<Region>(),
 						vformat("not valid tile enum or dictionary for entry %d of %s", j, _name)
@@ -344,30 +350,18 @@ Ref<Region> Region::create(
 					if (alignments[j].get_type() == Variant::INT) {
 						int alignment_i{ alignment };
 						alignment = Axis::mirror_direction(m_axis, static_cast<Direction::E>(alignment_i));
-
 					} else if (alignments[j].get_type() == Variant::VECTOR2I) {
 						Vector2i alignment_v{ alignment };
 						alignment = Axis::mirror_alignment(m_axis, alignment_v);
-						print_line(vformat("mirrored alignment for %s is %s, original is %s", region->name, alignment, alignment_v));
-
 					} else {
 						ERR_FAIL_V_MSG(
 							Ref<Region>(),
-							vformat(
-								"type provided for %s alignments pos %s is invalid %s",
-								region->name, j, alignments[j].get_type()
-							)
+							vformat("type provided for %s alignments pos %s is invalid %s", region->name, j, alignments[j].get_type())
 						);
 					}
 
 					region->internal_choices[i].choice_set[j] = (
 						InternalEntry::make_tile_ref(tile, alignment, internal_placement.get(j))
-					);
-
-				} else {
-					ERR_FAIL_V_MSG(
-						Ref<Region>(),
-						vformat("incompatible type passed to Region::create for entry %d of %s", j, _name)
 					);
 				}
 			}
@@ -474,10 +468,14 @@ String Region::get_internal_choices_debug() const {
 				);
 
 			} else {
-				out += vformat(
-					"{tile_index(%s), layer(%s), size(%s), weight(%s), gpos_offset(%s), placement(%s)}, ",
-					entry.tile->tile, entry.tile->layer, entry.size, choice_sets.norm_weights[j], entry.gpos_alignment, entry.placement
-				);
+				if (entry.tile == Ref<Tile>()) {
+					out += "null tile";
+				} else {
+					out += vformat(
+						"{tile_index(%s), layer(%s), size(%s), weight(%s), gpos_offset(%s), placement(%s)}, ",
+						entry.tile->tile, entry.tile->layer, entry.size, choice_sets.norm_weights[j], entry.gpos_alignment, entry.placement
+					);
+				}
 			}
 		}
 
