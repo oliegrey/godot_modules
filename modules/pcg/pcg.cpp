@@ -551,7 +551,6 @@ void PCG::fill(
 		);
 	}
 	else {
-		tile_data.fill(tile_i);
 		if (add_occupancy) { generative_occupancy->fill(); }
 		if (!m_is_server) {
 			ERR_FAIL_COND_MSG(layer_offset < 0, "layer_offset is required for client");
@@ -560,6 +559,7 @@ void PCG::fill(
 					Vector2i gpos{ Vector2i(x, y) };
 					int layer_cell_i{ get_layer_cell_i(layer_offset, gpos) };
 					add_drawn_index(layer_cell_i, gpos);
+					add_tile_data(layer_cell_i, tile_i);
 				}
 			}
 		}
