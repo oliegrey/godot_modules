@@ -134,6 +134,7 @@ public:
     static Vector2i get_tile_size(int tile_i);
     
     void set_hardness(const int _hardness) { hardness = _hardness; }
+    int get_hardness() const { return hardness; }
     void set_particle(const int _particle) { particle = _particle; }
     virtual String to_string() override { 
         return vformat("Tile(tile_name:%s, tile_i:%d)", name, tile); 

@@ -99,6 +99,9 @@ void Tile::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_atlas_coords", "state"), &Tile::get_atlas_coords, DEFVAL(Tile::MAX_STATE));
     
     ClassDB::bind_method(D_METHOD("set_hardness", "_hardness"), &Tile::set_hardness);
+    ClassDB::bind_method(D_METHOD("get_hardness"), &Tile::get_hardness);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "hardness"), "set_hardness", "get_hardness");
+    
     ClassDB::bind_method(D_METHOD("set_particle", "_particle"), &Tile::set_particle);
     
     ClassDB::bind_static_method("Tile", D_METHOD("get_layer_name", "layer_i"), &Tile::get_layer_name);
