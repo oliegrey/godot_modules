@@ -66,24 +66,25 @@ public:
 		CRYSTAL = 22,
 		EXPLORER = 23,
 		MEGAMOREL = 24,
-		SIGNPOST = 25,
-		TRADER = 26,
+		PORTAL = 25,
+		SIGNPOST = 26,
+		TRADER = 27,
     };
     enum Mineable {
-		AZUREEL = 27,
-		COAL = 28,
-		GOLD = 29,
-		ILLEGIBLE_PARCHMENT = 30,
-		IMALADITE = 31,
-		IRON = 32,
-		NULLSCRAP = 33,
-		SALT = 34,
-		SILVER = 35,
-		SKELETON = 36,
-		STRANGE_COINS = 37,
+		AZUREEL = 28,
+		COAL = 29,
+		GOLD = 30,
+		ILLEGIBLE_PARCHMENT = 31,
+		IMALADITE = 32,
+		IRON = 33,
+		NULLSCRAP = 34,
+		SALT = 35,
+		SILVER = 36,
+		SKELETON = 37,
+		STRANGE_COINS = 38,
     };
 
-    inline static constexpr int MAX_TILE{38};
+    inline static constexpr int MAX_TILE{39};
     
     Tile() {}
     Tile(
@@ -116,6 +117,7 @@ public:
     LocalVector<State> states;
     LocalVector<Vector2i> state_frame_ranges;
     LocalVector<Vector2i> state_atlas_coords;
+    LocalVector<int> state_durations_ms;
     PackedInt32Array frame_durations_ms; 
     Vector2i g_size;
     int linked_foreground_i = -1;
@@ -146,6 +148,7 @@ public:
     Layer get_layer_e() const;
     int get_tile_e() const;
     PackedInt32Array get_frame_durations_ms() const;
+    int get_state_duration_ms(State p_state) const;
     Vector2i get_atlas_coords(State p_state = MAX_STATE);
     PackedInt32Array get_states() const;
     TypedArray<Vector2i> get_state_frame_ranges() const;

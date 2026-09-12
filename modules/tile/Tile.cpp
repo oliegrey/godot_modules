@@ -25,10 +25,19 @@ Tile::Tile(
     random_group_lengths[p_tile] = p_random_group_length;
 
     state_atlas_coords.resize(states.size());
+    state_durations_ms.resize(states.size());
     for (uint32_t i = 0; i < states.size(); i++) {
         state_atlas_coords[i].x = state_frame_ranges[i].x;
         state_atlas_coords[i].y = prev_atlas_coord_y;
         atlas_coord_to_tile[layer][state_atlas_coords[i]] = this;
+
+        int total = 0;
+        int start = state_frame_ranges[i].x;
+        int end = state_frame_ranges[i].y;
+        for (int f = start; f <= end; f++) {
+            total += p_frame_durations_ms[f];
+        }
+        state_durations_ms[i] = total;
     }
     prev_atlas_coord_y = state_atlas_coords[0].y + g_size.y;
 }
@@ -76,6 +85,7 @@ void Tile::_bind_methods() {
 	BIND_ENUM_CONSTANT(CRYSTAL);
 	BIND_ENUM_CONSTANT(EXPLORER);
 	BIND_ENUM_CONSTANT(MEGAMOREL);
+	BIND_ENUM_CONSTANT(PORTAL);
 	BIND_ENUM_CONSTANT(SIGNPOST);
 	BIND_ENUM_CONSTANT(TRADER);
 
@@ -113,6 +123,8 @@ void Tile::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_state_frame_ranges"), &Tile::get_state_frame_ranges);
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "states"), "", "get_states");
     ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "state_frame_ranges"), "", "get_state_frame_ranges");
+    
+    ClassDB::bind_method(D_METHOD("get_state_duration_ms"), &Tile::get_state_duration_ms);
     
     ClassDB::bind_method(D_METHOD("get_g_size"), &Tile::get_g_size);
     ADD_PROPERTY(PropertyInfo(Variant::VECTOR2I, "g_size"), "", "get_g_size");
@@ -445,12 +457,36 @@ void Tile::init_layer_configs() {
     }
     {
         LocalVector<State> states;
-		states.push_back(State::NONE);
+		states.push_back(State::IDLE);
+		states.push_back(State::ACTIVE);
         LocalVector<Vector2i> state_frame_ranges;
-		state_frame_ranges.push_back(Vector2i(0, 0));
+		state_frame_ranges.push_back(Vector2i(0, 11));
+		state_frame_ranges.push_back(Vector2i(12, 22));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::INTERACTABLE, 25, String("Signpost"), states, state_frame_ranges, frame_durations_ms, 1, 1, 0, -1)));
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(100);
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::INTERACTABLE, 25, String("Portal"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         interactable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -461,7 +497,18 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::INTERACTABLE, 26, String("Trader"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::INTERACTABLE, 26, String("Signpost"), states, state_frame_ranges, frame_durations_ms, 1, 1, 0, -1)));
+        interactable_layer.push_back(t);
+        tile_configs.push_back(t);
+    }
+    {
+        LocalVector<State> states;
+		states.push_back(State::NONE);
+        LocalVector<Vector2i> state_frame_ranges;
+		state_frame_ranges.push_back(Vector2i(0, 0));
+        PackedInt32Array frame_durations_ms;
+		frame_durations_ms.push_back(100);
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::INTERACTABLE, 27, String("Trader"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         interactable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -476,7 +523,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 27, String("Azureel"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 28, String("Azureel"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -487,7 +534,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 28, String("Coal"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 29, String("Coal"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -498,7 +545,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 29, String("Gold"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 30, String("Gold"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -509,7 +556,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 30, String("IllegibleParchment"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 31, String("IllegibleParchment"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -520,7 +567,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 31, String("Imaladite"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 32, String("Imaladite"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -531,7 +578,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 32, String("Iron"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 33, String("Iron"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -542,7 +589,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 33, String("Nullscrap"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 34, String("Nullscrap"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -553,7 +600,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 34, String("Salt"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 35, String("Salt"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -564,7 +611,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 35, String("Silver"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 36, String("Silver"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -575,7 +622,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 36, String("Skeleton"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 37, String("Skeleton"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -586,7 +633,7 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 0));
         PackedInt32Array frame_durations_ms;
 		frame_durations_ms.push_back(100);
-        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 37, String("StrangeCoins"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
+        Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::MINEABLE, 38, String("StrangeCoins"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         mineable_layer.push_back(t);
         tile_configs.push_back(t);
     }
@@ -648,6 +695,16 @@ TypedArray<Tile> Tile::get_layer_tiles(Tile::Layer layer_i) {
         result.set(i, layer_tiles[i]);
     }
     return result;
+}
+
+int Tile::get_state_duration_ms(State p_state) const {
+    State target_state = (p_state == MAX_STATE) ? states[0] : p_state;
+    for (uint32_t i = 0; i < states.size(); i++) {
+        if (states[i] == target_state) {
+            return state_durations_ms[i];
+        }
+    }
+    ERR_FAIL_V_MSG(0, "get_state_duration_ms: requested state is not in this tile's states list.");
 }
 
 const LocalVector<Ref<Tile>> &Tile::get_layer(Layer layer_i) { return layer_configs[static_cast<int>(layer_i)]; }
