@@ -27,7 +27,7 @@ Tile::Tile(
     state_atlas_coords.resize(states.size());
     state_durations_ms.resize(states.size());
     for (uint32_t i = 0; i < states.size(); i++) {
-        state_atlas_coords[i].x = state_frame_ranges[i].x;
+        state_atlas_coords[i].x = state_frame_ranges[i].x * g_size.x;
         state_atlas_coords[i].y = prev_atlas_coord_y;
         atlas_coord_to_tile[layer][state_atlas_coords[i]] = this;
 
@@ -463,29 +463,29 @@ void Tile::init_layer_configs() {
 		state_frame_ranges.push_back(Vector2i(0, 11));
 		state_frame_ranges.push_back(Vector2i(12, 22));
         PackedInt32Array frame_durations_ms;
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
-		frame_durations_ms.push_back(100);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
+		frame_durations_ms.push_back(150);
         Ref<Tile> t = Ref<Tile>(memnew(Tile(Layer::INTERACTABLE, 25, String("Portal"), states, state_frame_ranges, frame_durations_ms, 1, 1, -1, -1)));
         interactable_layer.push_back(t);
         tile_configs.push_back(t);
@@ -749,5 +749,5 @@ Vector2i Tile::get_atlas_coords(State p_state) {
             return state_atlas_coords[i];
         }
     }
-    ERR_FAIL_V_MSG(Vector2i(), "get_atlas_coords: requested state is not in this tile's states list.");
+    return Vector2i(-1, -1);
 }
