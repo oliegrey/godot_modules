@@ -85,6 +85,14 @@ public:
     };
 
     inline static constexpr int MAX_TILE{39};
+    inline static const std::array<Vector2i, MAX_LAYER> layer_tile_ranges{ {
+	{ 0, 3 },
+	{ 4, 8 },
+	{ 9, 19 },
+	{ 20, 20 },
+	{ 21, 27 },
+	{ 28, 38 }
+    } };
     
     Tile() {}
     Tile(
@@ -134,6 +142,7 @@ public:
     static TypedArray<Tile> get_layer_tiles(Tile::Layer layer_i);
     static int get_variation_i(Ref<RandomNumberGenerator> rng, int tile_i);
     static Vector2i get_tile_size(int tile_i);
+    static Vector2i get_layer_tile_range(Layer layer_i);
     
     void set_hardness(const int _hardness) { hardness = _hardness; }
     int get_hardness() const { return hardness; }

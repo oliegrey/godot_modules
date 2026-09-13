@@ -130,6 +130,7 @@ void Tile::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::VECTOR2I, "g_size"), "", "get_g_size");
     
     ClassDB::bind_static_method("Tile", D_METHOD("get_tile_size", "tile_i"), &Tile::get_tile_size);
+    ClassDB::bind_static_method("Tile", D_METHOD("get_layer_tile_range", "layer_i"), &Tile::get_layer_tile_range);
     
     ClassDB::bind_method(D_METHOD("get_frame_durations_ms"), &Tile::get_frame_durations_ms);
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "frame_durations_ms"), "", "get_frame_durations_ms");
@@ -732,6 +733,11 @@ int Tile::get_variation_i(Ref<RandomNumberGenerator> rng, int tile_i){
 
 Vector2i Tile::get_tile_size(int tile_i) {
     return tile_sizes[tile_i];
+}
+
+Vector2i Tile::get_layer_tile_range(Layer layer_i) {
+    ERR_FAIL_INDEX_V(static_cast<int>(layer_i), MAX_LAYER, Vector2i(-1, -1));
+    return layer_tile_ranges[static_cast<int>(layer_i)];
 }
 
 Ref<Tile> Tile::get_variation(Ref<RandomNumberGenerator> rng){
