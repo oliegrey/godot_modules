@@ -1,9 +1,9 @@
 #pragma once
 
 #include "core/object/ref_counted.h"
+#include "modules/subgrid_probe/subgrid_probe.h"
 
 class BitGrid2D;
-class SubgridProbe;
 class RandomNumberGenerator;
 class Tile;
 

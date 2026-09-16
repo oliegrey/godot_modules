@@ -6,7 +6,7 @@
 #include "modules/pcg/pcg.h"
 #include "modules/direction/direction.h"
 #include "modules/axis/axis.h"
-#include "modules/tile/Tile.h"
+#include "modules/tile/tile.h"
 
 #include <array>
 

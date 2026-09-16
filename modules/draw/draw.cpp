@@ -76,7 +76,10 @@ void Draw::segment(
 			if (dug_action == DugAction::SET_DUG) {
 				static TileMapLayer *background_layer{ layers[Tile::BACKGROUND] };
 				static const Vector2i dug_atlas_coords{ Tile::get_tile(Tile::DUG)->get_atlas_coords() }; 
-				const Vector2i gpos{ (bits >> 16) & 0xFFFF, (bits >> 32) & 0xFFFF };
+				const Vector2i gpos{
+					static_cast<int32_t>((bits >> 16) & 0xFFFF),
+					static_cast<int32_t>((bits >> 32) & 0xFFFF)
+				};
 				background_layer->set_cell(gpos, 0, dug_atlas_coords);
 			}
 
@@ -93,7 +96,10 @@ void Draw::segment(
 			continue;
 		}
 
-		const Vector2i gpos{ (bits >> 16) & 0xFFFF, (bits >> 32) & 0xFFFF };
+		const Vector2i gpos{
+			static_cast<int32_t>((bits >> 16) & 0xFFFF),
+			static_cast<int32_t>((bits >> 32) & 0xFFFF)
+		};
 		layer->set_cell(gpos, 0, tile->get_atlas_coords());
 		try_foreground(tile, gpos);
 	}

@@ -63,7 +63,7 @@ private:
 			String edge_cache_str{"SizedEdgeCache("};
 
 			for (int dir_i{ 0 }; dir_i < Direction::MAX; ++dir_i) {
-				Direction::E dir{ static_cast<Direction::E>(dir_i) };
+				//Direction::E dir{ static_cast<Direction::E>(dir_i) };
 				const int offset{ dir_i * Region::MAX_CELL_COUNT };
 				edge_cache_str += vformat("\n\tdirection %s: ", dir_i);
 

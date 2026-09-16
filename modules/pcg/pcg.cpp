@@ -1,7 +1,6 @@
 #include "pcg.h"
 #include "modules/bit_grid_2d/bit_grid_2d.h"
-#include "modules/subgrid_probe/subgrid_probe.h"
-#include "modules/tile/Tile.h"
+#include "modules/tile/tile.h"
 #include "core/math/random_number_generator.h"
 
 void PCG::_bind_methods() {

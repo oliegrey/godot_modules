@@ -1,5 +1,4 @@
 #include "bit_grid_2d.h"
-#include "core/math/random_number_generator.h"
 
 #include <functional>
 
@@ -579,17 +578,17 @@ LocalVector<Rect2i> BitGrid2D::find_largest_anchored_areas_in_area(
 	// search left and right from a bar until hitting a smaller bar and get the quad size
 	for (int quad_i{ is_wanted_size_found }; quad_i < static_cast<int>(largest_quads.size()); ++quad_i) {
 		const Vector2i i_range{ i_ranges[quad_i - is_wanted_size_found] };
-		const int start_i{ i_range.x };
+		const int _start_i{ i_range.x };
 		const int end_i{ i_range.y };
-		const int range_size{ end_i - start_i };
+		const int range_size{ end_i - _start_i };
 		int largest_quad_cell_count{ 0 };
 
 		for (int i{ 0 }; i < range_size; ++i) {
-			const int quad_height{ histogram[start_i + i] };
+			const int quad_height{ histogram[_start_i + i] };
 
 			int left_i{ i - 1 };
 			while(left_i > -1) {
-				const int left_height{ histogram[start_i + left_i] };
+				const int left_height{ histogram[_start_i + left_i] };
 				if (left_height < quad_height) {
 					break;
 				}
@@ -598,7 +597,7 @@ LocalVector<Rect2i> BitGrid2D::find_largest_anchored_areas_in_area(
 
 			int right_i{ i + 1 };
 			while(right_i < range_size) {
-				const int right_height{ histogram[start_i + right_i] };
+				const int right_height{ histogram[_start_i + right_i] };
 				if (right_height < quad_height) {
 					break;
 				}
@@ -615,7 +614,7 @@ LocalVector<Rect2i> BitGrid2D::find_largest_anchored_areas_in_area(
 				largest_quads[quad_i].size[anchor_axis] = quad_width;
 				largest_quads[quad_i].size[len_axis] = quad_height;
 				largest_quads[quad_i].position[anchor_axis] = (
-					start_i + left_i + 1 + origin[anchor_axis]
+					_start_i + left_i + 1 + origin[anchor_axis]
 				);
 			}
 		}
@@ -703,7 +702,7 @@ BitGrid2D::HistogramResult BitGrid2D::compute_histogram(
 	const int len_polarity{ 1 - (anchor_dir % 2) * 2 };
 	const int len_cell_advancement{ (bar_axis == Axis::X ? grid_size.x : 1) * len_polarity };
 
-	const int end_bar{ (start_bar - 1 + bar_count) % bar_count };
+	//const int end_bar{ (start_bar - 1 + bar_count) % bar_count };
 
 	PackedInt32Array hist;
 	hist.resize(bar_count);

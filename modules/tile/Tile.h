@@ -67,32 +67,33 @@ public:
 		EXPLORER = 23,
 		LEAVE = 24,
 		MEGAMOREL = 25,
-		PORTAL = 26,
-		SIGNPOST = 27,
-		TRADER = 28,
+		MUSIC = 26,
+		PORTAL = 27,
+		SIGNPOST = 28,
+		TRADER = 29,
     };
     enum Mineable {
-		AZUREEL = 29,
-		COAL = 30,
-		GOLD = 31,
-		ILLEGIBLE_PARCHMENT = 32,
-		IMALADITE = 33,
-		IRON = 34,
-		NULLSCRAP = 35,
-		SALT = 36,
-		SILVER = 37,
-		SKELETON = 38,
-		STRANGE_COINS = 39,
+		AZUREEL = 30,
+		COAL = 31,
+		GOLD = 32,
+		ILLEGIBLE_PARCHMENT = 33,
+		IMALADITE = 34,
+		IRON = 35,
+		NULLSCRAP = 36,
+		SALT = 37,
+		SILVER = 38,
+		SKELETON = 39,
+		STRANGE_COINS = 40,
     };
 
-    inline static constexpr int MAX_TILE{40};
+    inline static constexpr int MAX_TILE{41};
     inline static const std::array<Vector2i, MAX_LAYER> layer_tile_ranges{ {
 	{ 0, 3 },
 	{ 4, 8 },
 	{ 9, 19 },
 	{ 20, 20 },
-	{ 21, 28 },
-	{ 29, 39 }
+	{ 21, 29 },
+	{ 30, 40 }
     } };
     
     Tile() {}

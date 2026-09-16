@@ -1,7 +1,7 @@
 #include "zone.h"
 #include "modules/pcg/pcg.h"
 #include "modules/bit_grid_2d/bit_grid_2d.h"
-#include "modules/tile/Tile.h"
+#include "modules/tile/tile.h"
 #include "core/math/random_number_generator.h"
 
 #include "scene/gui/label.h"
@@ -543,7 +543,7 @@ void Zone::fill_blocked_sides(
 	const LocalVector<Region::BlockedSide> &blocked_sides, const Rect2i &region_rect_e
 ) {
 	const int side_count{ static_cast<int>(blocked_sides.size()) };
-	const int corner_count{ side_count * side_count / 4 };
+	//const int corner_count{ side_count * side_count / 4 };
 
 	uint8_t corner_bitmap{ 0 };
 

@@ -4,8 +4,7 @@
 #include "core/variant/typed_array.h"
 #include "modules/direction/direction.h"
 #include "modules/axis/axis.h"
-
-class RandomNumberGenerator;
+#include "core/math/random_number_generator.h"
 
 class BitGrid2D : public RefCounted {
 	GDCLASS(BitGrid2D, RefCounted);
