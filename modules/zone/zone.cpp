@@ -301,7 +301,6 @@ void Zone::generate_secondary() {
 		}
 
 		for (int i{ region_count - 1 }; i >= 0; --i) {
-			print_line(vformat("incl size of ... %s", s_sizes[i].i));
 			bool is_placed{ try_place_s_region(s_regions[i], s_sizes[i]) };
 
 			if (is_placed) {
