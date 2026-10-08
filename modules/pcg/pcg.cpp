@@ -197,8 +197,10 @@ Ref<PCG> PCG::create(Vector2i segment_grid_size, int w_seg, bool is_server) {
 	pcg->tile_data.fill(255);
 	pcg->anchor_dist_data.resize(layer_count * cell_count);
 	pcg->anchor_dist_data.fill(0);
-	pcg->drawn_indexes.resize(cell_count * layer_count);
-	pcg->drawn_indexes.fill(-1);
+	if (!is_server) {
+		pcg->drawn_indexes.resize(cell_count * layer_count);
+		pcg->drawn_indexes.fill(-1);
+	}
 	return pcg;
 }
 
