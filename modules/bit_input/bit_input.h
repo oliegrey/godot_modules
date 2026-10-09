@@ -8,47 +8,69 @@ class BitInput : public RefCounted {
 
 public:
 	enum Input {
-		LEFT  = 0b1,
-		RIGHT = 0b10,
-		UP    = 0b100,
-		DOWN  = 0b1000,
-		DASH  = 0b10000
+		UP        = 0b1,
+		DOWN      = 0b10,
+		LEFT      = 0b100,
+		RIGHT     = 0b1000,
+
+		JUMP      = 0b10000,
+		DASH      = 0b100000,
+		DIG       = 0b1000000,
+		MAX_INPUT = 0b10000000
 	};
+
 	enum GroupInput {
 		LEFT_DASH  = LEFT | DASH,
 		RIGHT_DASH = RIGHT | DASH,
+
+		UP_DIG     = UP | DIG,
+		DOWN_DIG   = DOWN | DIG,
+		LEFT_DIG   = LEFT | DIG,
+		RIGHT_DIG  = RIGHT | DIG,
+
 		VERTICAL   = UP | DOWN,
 		HORIZONTAL = LEFT | RIGHT,
 		DIRECTION  = UP | DOWN | LEFT | RIGHT
 	};
 
 private:
+	// these only keep the input, wiping all other inputs
 	static constexpr std::array<int, 1> m_exclusive_bitmasks {
-		DOWN
+		
 	};
+	// these only keep the most recent key in the group pressed
 	static constexpr std::array<int, 2> m_group_exclusive_bitmasks {
-		LEFT | RIGHT, DASH | UP | DOWN
+		UP | DOWN | LEFT | RIGHT, JUMP | DASH | DIG
 	};
-	static constexpr int m_held_inputs_bitmask {
+	static constexpr int m_persistent_inputs {
 		LEFT | RIGHT
 	};
+	// for each memory input group we keep one previous state to return to
+	static constexpr std::array<int, 1> m_memory_inputs_groups_bitmasks {
+		GroupInput::HORIZONTAL
+	};
+
+	std::array<int, m_memory_inputs_groups_bitmasks.size()> inputs_memory{};
 
 public:
 	int inputs{ 0 };
+
+private:
+	void update_memory();
 
 protected:
 	static void _bind_methods();
 
 public:
 	int get_inputs() const;
+	void wipe_memory();
 	void set_inputs(int inputs);
 	bool has_input(int input) const;
 	bool has_all_group_input(int group_input) const;
 	bool has_any_group_input(int group_input) const;
 	void set_input(int input);
 	void progress_frame();
-	void clear_input(int input);
-	void clear_group(int group_input);
+	void release_inputs(int released_inputs);
 };
 
 VARIANT_ENUM_CAST(BitInput::Input);

@@ -27,7 +27,7 @@ public:
 			default:          return E::NONE;
 		}
 	}
-	static Vector2i direction_to_vector2i(E direction);
+	static Vector2i to_vector2i(E direction);
 };
 
 VARIANT_ENUM_CAST(Direction::E)

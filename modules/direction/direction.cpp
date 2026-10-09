@@ -2,8 +2,8 @@
 
 void Direction::_bind_methods() {
 	ClassDB::bind_static_method(
-		"Direction", D_METHOD("direction_to_vector2i", "direction"),
-		&Direction::direction_to_vector2i
+		"Direction", D_METHOD("to_vector2i", "direction"),
+		&Direction::to_vector2i
 	);
 
 	BIND_ENUM_CONSTANT(NONE);
@@ -14,6 +14,6 @@ void Direction::_bind_methods() {
 	BIND_ENUM_CONSTANT(MAX);
 }
 
-Vector2i Direction::direction_to_vector2i(E direction) {
+Vector2i Direction::to_vector2i(E direction) {
 	return direction_vector2i[direction];
 }

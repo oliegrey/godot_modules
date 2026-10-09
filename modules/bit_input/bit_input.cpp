@@ -34,7 +34,15 @@ int BitInput::get_inputs() const {
 	return inputs;
 }
 
+void BitInput::wipe_memory() {
+	for (int i{ 0 }; i < inputs_memory.size(); ++ i) {
+		inputs_memory[i] = 0;
+	}
+}
+
+// wipes memory of previous inputs
 void BitInput::set_inputs(int _inputs) {
+	wipe_memory();
 	inputs = _inputs;
 }
 
@@ -44,19 +52,27 @@ bool BitInput::has_input(int input) const {
 
 bool BitInput::has_all_group_input(int group_input) const {
 	return (inputs & group_input) == group_input;
-}bool BitInput::has_any_group_input(int group_input) const {
+}
+
+bool BitInput::has_any_group_input(int group_input) const {
 	return static_cast<bool>(inputs & group_input);
 }
 
 void BitInput::set_input(int input) {
-	// an exclusive is set so ignore following inputs
+	if ((input | inputs) == inputs) {
+		return;
+	}
+
+	// An exclusive is set so ignore following inputs until unset.
 	for (int bitmask: m_exclusive_bitmasks) {
 		if (inputs & bitmask) {
 			return;
 		}
 	}
 
-	// the input is exclusive so set to only this input and return
+	update_memory();
+
+	// The input is exclusive so set to only this input and return.
 	for (int bitmask: m_exclusive_bitmasks) {
 		if (input & bitmask) {
 			inputs = input;
@@ -64,26 +80,60 @@ void BitInput::set_input(int input) {
 		}
 	}
 
-	// the input is a group exclusive so wipe the group
+	// The input is a group exclusive so wipe the group.
 	for (int bitmask: m_group_exclusive_bitmasks) {
 		if (input & bitmask) {
 			inputs &= ~bitmask;
 		}
 	}
 
-	// finally set the bit
+	// Finally set the bit.
 	inputs |= input;
 }
 
+// Whenever any input is received we check if the inputs about to be changed
+// differs from memory groups. Ensure this is called BEFORE changes to inputs.
+void BitInput::update_memory() {
+	for (int i{ 0 }; i < m_memory_inputs_groups_bitmasks.size(); ++i) {
+		int group_bitmap{ inputs & m_memory_inputs_groups_bitmasks[i] };
+
+		if (group_bitmap != inputs_memory[i]) {
+			inputs_memory[i] = group_bitmap;
+		}
+	}
+}
+
 void BitInput::progress_frame() {
-	// release everything except the held inputs
-	inputs &= m_held_inputs_bitmask;
+	// Release everything except the persistent inputs.
+	// Every other input only lasts 1 frame per press.
+	inputs &= m_persistent_inputs;
 }
 
-void BitInput::clear_input(int input) {
-	inputs &= ~input;
-}
+// can be any combination or single input. Ensures memory is also released.
+void BitInput::release_inputs(int released_inputs) {
 
-void BitInput::clear_group(int group_input) {
-	inputs &= ~group_input ;
+	// Revert to previous for each group that exists in released_inputs.
+	// Clear from released_inputs so the final release does not wipe this step.
+	for (int i{ 0 }; i < m_memory_inputs_groups_bitmasks.size(); ++i) {
+		int bitmask{ m_memory_inputs_groups_bitmasks[i] };
+
+		// If any inputs present from a memory group...
+		// In current inputs: wipe the group, set current to memory, then clear released from memory
+		// Only in memory: clear only released from memory
+		if (released_inputs & bitmask) {
+			int input_group_memory{ inputs_memory[i] & released_inputs };
+			if (inputs & bitmask) {
+				inputs &= ~m_memory_inputs_groups_bitmasks[i];
+				inputs |= input_group_memory;
+				inputs_memory[i] &= ~released_inputs;
+			} else if (inputs_memory[i] & bitmask) {
+				inputs_memory[i] &= ~released_inputs;
+			}
+
+			released_inputs &= ~bitmask;
+		}
+	}
+
+	// Release only non memory group inputs.
+	inputs &= ~released_inputs;
 }
