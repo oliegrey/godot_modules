@@ -3,6 +3,17 @@
 #include "core/object/ref_counted.h"
 #include <array>
 
+namespace BitCombine {
+	template <size_t N>
+	static constexpr int or_all(const std::array<int, N> &bitmasks) {
+		int combined_bitmask{ 0 };
+		for (int bitmask: bitmasks) {
+			combined_bitmask |= bitmask;
+		}
+		return combined_bitmask;
+	}
+}
+
 class BitInput : public RefCounted {
 	GDCLASS(BitInput, RefCounted);
 
@@ -12,11 +23,11 @@ public:
 		DOWN      = 0b10,
 		LEFT      = 0b100,
 		RIGHT     = 0b1000,
-
 		JUMP      = 0b10000,
 		DASH      = 0b100000,
 		DIG       = 0b1000000,
-		MAX_INPUT = 0b10000000
+		INTERACT  = 0b10000000,
+		INPUT_MAX = 0b100000000
 	};
 
 	enum GroupInput {
@@ -34,40 +45,47 @@ public:
 	};
 
 private:
-	// these only keep the input, wiping all other inputs
-	static constexpr std::array<int, 1> m_exclusive_bitmasks {
-		
+	// Only keeps the exclusive input when any input received (wipes persistent).
+	static constexpr std::array<int, 1> m_exclusive{
+		INTERACT
 	};
-	// these only keep the most recent key in the group pressed
-	static constexpr std::array<int, 2> m_group_exclusive_bitmasks {
-		UP | DOWN | LEFT | RIGHT, JUMP | DASH | DIG
-	};
-	static constexpr int m_persistent_inputs {
-		LEFT | RIGHT
-	};
-	// for each memory input group we keep one previous state to return to
-	static constexpr std::array<int, 1> m_memory_inputs_groups_bitmasks {
-		GroupInput::HORIZONTAL
+	static constexpr int m_all_exclusive{
+		BitCombine::or_all<m_exclusive.size()>(m_exclusive)
 	};
 
-	std::array<int, m_memory_inputs_groups_bitmasks.size()> inputs_memory{};
+	// Carried over per frame until manually released.
+	static constexpr std::array<int, 3> m_persistent_inputs{
+		LEFT, RIGHT
+	};
+	static constexpr int m_all_persistent_inputs{
+		BitCombine::or_all<m_persistent_inputs.size()>(m_persistent_inputs)
+	};
+
+	// The most recent key in the group pressed when input received.
+	static constexpr std::array<int, 3> m_group_exclusive{
+		LEFT | RIGHT, UP | DOWN, JUMP | DASH | DIG
+	};
+	static constexpr int m_all_group_exclusive{
+		BitCombine::or_all<m_group_exclusive.size()>(m_group_exclusive)
+	};
+
+	inline static std::array<int, 8> m_persistent_memory{};
+	inline static int m_persistent_memory_i{ 0 };
 
 public:
 	int inputs{ 0 };
-
-private:
-	void update_memory();
 
 protected:
 	static void _bind_methods();
 
 public:
+	static int max_input_bytes();
 	int get_inputs() const;
-	void wipe_memory();
-	void set_inputs(int inputs);
-	bool has_input(int input) const;
-	bool has_all_group_input(int group_input) const;
-	bool has_any_group_input(int group_input) const;
+	void set_inputs(int new_inputs);
+	void clear_inputs();
+	bool has_any_input(int new_inputs) const;
+	bool has_all_inputs(int new_inputs) const;
+	bool has_transient_inputs() const;
 	void set_input(int input);
 	void progress_frame();
 	void release_inputs(int released_inputs);
