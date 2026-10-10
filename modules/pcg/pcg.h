@@ -160,6 +160,8 @@ public:
 		Rect2i rect,
 		bool skip_dirt = false
 	);
+
+	int get_gpos_tile(int layer_offset, const Vector2i &seg_gpos) const;
 };
 
 VARIANT_ENUM_CAST(PCG::Fill)

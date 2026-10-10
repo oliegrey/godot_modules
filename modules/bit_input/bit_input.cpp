@@ -5,6 +5,8 @@ void BitInput::_bind_methods() {
 		"BitInput", D_METHOD("max_input_bytes"), &BitInput::max_input_bytes
 	);
 
+	// only emits when set directly (should only be during replication)
+	ADD_SIGNAL(MethodInfo("inputs_set", PropertyInfo(Variant::INT, "inputs")));
 	ClassDB::bind_method(D_METHOD("get_inputs"), &BitInput::get_inputs);
 	ClassDB::bind_method(D_METHOD("set_inputs", "new_inputs"), &BitInput::set_inputs);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "inputs"), "", "get_inputs");
@@ -22,6 +24,8 @@ void BitInput::_bind_methods() {
 	ClassDB::bind_method(
 		D_METHOD("release_inputs", "released_inputs"), &BitInput::release_inputs
 	);
+
+	
 
 	BIND_ENUM_CONSTANT(UP);
 	BIND_ENUM_CONSTANT(DOWN);
@@ -48,7 +52,10 @@ int BitInput::get_inputs() const {
 }
 
 void BitInput::set_inputs(int new_inputs) {
-	inputs = new_inputs;
+	if (inputs != new_inputs) {
+		inputs = new_inputs;
+		emit_signal(SNAME("inputs_set"), inputs);
+	}
 }
 
 void BitInput::clear_inputs() {

@@ -178,6 +178,11 @@ void PCG::_bind_methods() {
 		DEFVAL(0)
 	);
 
+	ClassDB::bind_method(
+		D_METHOD("get_gpos_tile", "layer_offset", "seg_gpos"),
+		&PCG::get_gpos_tile
+	);
+
 	BIND_ENUM_CONSTANT(PICK_ONE);
 	BIND_ENUM_CONSTANT(MIX);
 }
@@ -631,4 +636,21 @@ void PCG::rand_fill_rect(
 		}
 		add_tile_rect(tile->layer * cell_count, tile->tile, rect, true, rng);
 	}
+}
+
+// Returns the tile index at the gpos for a layer, or 255 if empty or out of range.
+int PCG::get_gpos_tile(int layer_offset, const Vector2i &seg_gpos) const {
+	if (
+		seg_gpos.x < 0 || seg_gpos.y < 0 ||
+		seg_gpos.x >= m_seg_grid_size.x || seg_gpos.y >= m_seg_grid_size.y
+	) {
+		return 255;
+	}
+	const int layer_cell_i{
+		layer_offset + seg_gpos.y * m_seg_grid_size.x + seg_gpos.x
+	};
+	if (layer_offset < 0 || layer_cell_i >= tile_data.size()) {
+		return 255;
+	}
+	return tile_data[layer_cell_i];
 }

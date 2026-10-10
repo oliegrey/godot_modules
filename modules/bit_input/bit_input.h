@@ -54,8 +54,8 @@ private:
 	};
 
 	// Carried over per frame until manually released.
-	static constexpr std::array<int, 3> m_persistent_inputs{
-		LEFT, RIGHT
+	static constexpr std::array<int, 4> m_persistent_inputs{
+		UP, DOWN, LEFT, RIGHT
 	};
 	static constexpr int m_all_persistent_inputs{
 		BitCombine::or_all<m_persistent_inputs.size()>(m_persistent_inputs)
@@ -63,7 +63,7 @@ private:
 
 	// The most recent key in the group pressed when input received.
 	static constexpr std::array<int, 3> m_group_exclusive{
-		LEFT | RIGHT, UP | DOWN, JUMP | DASH | DIG
+		UP | DOWN | LEFT | RIGHT, JUMP | DASH | DIG
 	};
 	static constexpr int m_all_group_exclusive{
 		BitCombine::or_all<m_group_exclusive.size()>(m_group_exclusive)
