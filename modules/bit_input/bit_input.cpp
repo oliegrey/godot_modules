@@ -25,8 +25,6 @@ void BitInput::_bind_methods() {
 		D_METHOD("release_inputs", "released_inputs"), &BitInput::release_inputs
 	);
 
-	
-
 	BIND_ENUM_CONSTANT(UP);
 	BIND_ENUM_CONSTANT(DOWN);
 	BIND_ENUM_CONSTANT(LEFT);
