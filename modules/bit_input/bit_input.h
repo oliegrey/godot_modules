@@ -80,6 +80,7 @@ protected:
 
 public:
 	static int max_input_bytes();
+	Vector2i get_direction() const;
 	int get_inputs() const;
 	void set_inputs(int new_inputs);
 	void clear_inputs();

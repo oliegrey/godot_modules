@@ -25,6 +25,8 @@ void BitInput::_bind_methods() {
 		D_METHOD("release_inputs", "released_inputs"), &BitInput::release_inputs
 	);
 
+	ClassDB::bind_method(D_METHOD("get_direction"), &BitInput::get_direction);
+
 	BIND_ENUM_CONSTANT(UP);
 	BIND_ENUM_CONSTANT(DOWN);
 	BIND_ENUM_CONSTANT(LEFT);
@@ -40,9 +42,16 @@ void BitInput::_bind_methods() {
 	BIND_ENUM_CONSTANT(DIRECTION);
 }
 
-	
 int BitInput::max_input_bytes() {
 	return 1 + (INPUT_MAX - 1 > 0xFF) + (INPUT_MAX - 1 > 0xFFFF) + (INPUT_MAX - 1 > 0xFFFFFF);
+}
+
+Vector2i BitInput::get_direction() const {
+	if (has_any_input(UP)) { return Vector2i{ 0, -1 }; }
+	else if (has_any_input(DOWN)) { return Vector2i{ 0, 1 }; }
+	else if (has_any_input(LEFT)) { return Vector2i{ -1, 0 }; }
+	else if (has_any_input(RIGHT)) { return Vector2i{ 1, 0 }; }
+	else { return Vector2i{ 0, 0 }; }
 }
 
 int BitInput::get_inputs() const {
@@ -125,7 +134,7 @@ void BitInput::release_inputs(int released_inputs) {
 	inputs &= ~released_inputs;
 
 	// Ensure released key is not in memory.
-	for (int i{ 0 }; i < m_persistent_memory.size(); ++i) {
+	for (size_t i{ 0 }; i < m_persistent_memory.size(); ++i) {
 		m_persistent_memory[i] &= ~released_inputs;
 	}
 

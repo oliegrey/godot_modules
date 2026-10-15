@@ -35,6 +35,7 @@ public:
 		Ref<BitGrid2D> bitgrid
 	);
 
+	static void dig_gpos(const Vector2i &w_gpos, const int dig_power);
 	static void dig_rect(const Rect2i &w_rect, const int dig_power);
 
 	static void try_foreground(Ref<Tile> base_tile, const Vector2i &w_gpos);

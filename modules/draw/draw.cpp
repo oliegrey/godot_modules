@@ -14,8 +14,10 @@ void Draw::_bind_methods() {
 		&Draw::segment
 	);
 	ClassDB::bind_static_method(
-		"Draw", D_METHOD("dig_rect", "w_rect", "dig_power"),
-		&Draw::dig_rect
+		"Draw", D_METHOD("dig_gpos", "w_gpos", "dig_power"), &Draw::dig_gpos
+	);
+	ClassDB::bind_static_method(
+		"Draw", D_METHOD("dig_rect", "w_rect", "dig_power"), &Draw::dig_rect
 	);
 
 	BIND_ENUM_CONSTANT(SET_DUG);
@@ -105,49 +107,54 @@ void Draw::segment(
 	}
 }
 
-// drawn indexes and tile data stay the same, just visual change
-void Draw::dig_rect(const Rect2i &w_rect, const int dig_power) {
+// digs every layer's tile at a single world grid position.
+// returns true if at least one tile was dug.
+void Draw::dig_gpos(const Vector2i &w_gpos, const int dig_power) {
 	static const Vector2i dug_atlas_coord{
 		Tile::get_tile(Tile::DUG)->get_atlas_coords()
 	};
 
-	static TileMapLayer *background_layer{ layers[Tile::BACKGROUND] };
-	Vector2i rect_end{ w_rect.position + w_rect.size };
+	TileMapLayer *background_layer{ layers[Tile::BACKGROUND] };
+
+	for (int layer_i{ 0 }; layer_i < Tile::MAX_LAYER; ++layer_i) {
+		TileMapLayer *layer{ layers[layer_i] };
+		const Tile::Layer layer_e{ static_cast<Tile::Layer>(layer_i) };
+		const Vector2i atlas_coords{ layer->get_cell_atlas_coords(w_gpos) };
+		Ref<Tile> tile{ Tile::get_atlas_coord_tile(layer_e, atlas_coords) };
+
+		if (tile == Ref<Tile>()) {
+			continue;
+		}
+
+		const int64_t tile_i{ tile->tile };
+		const DugAction dug_action{ tile_dug_action[tile_i] };
+
+		if (dug_action == DugAction::PASS || dig_power < tile->hardness) {
+			continue;
+		}
+
+		if (dug_action == DugAction::SET_DUG) {
+			background_layer->set_cell(w_gpos, 0, dug_atlas_coord);
+		}
+
+		if (layer != background_layer) {
+			layer->set_cell(w_gpos);
+		}
+
+		try_foreground(tile, w_gpos);
+
+		if (tile->particle != -1) {
+			// do particle effect
+		}
+	}
+}
+
+void Draw::dig_rect(const Rect2i &w_rect, const int dig_power) {
+	const Vector2i rect_end{ w_rect.position + w_rect.size };
 
 	for (int y{ w_rect.position.y }; y < rect_end.y; ++y) {
 		for (int x{ w_rect.position.x }; x < rect_end.x; ++x) {
-			const Vector2i w_gpos{ Vector2i{ x, y } };
-
-			for (int layer_i{ 0 }; layer_i < Tile::MAX_LAYER; ++layer_i) {
-				TileMapLayer *layer{ layers[layer_i] };
-				Tile::Layer layer_e{ static_cast<Tile::Layer>(layer_i) };
-				const Vector2i atlas_coords{ layer->get_cell_atlas_coords(w_gpos) };
-				Ref<Tile> tile{ Tile::get_atlas_coord_tile(layer_e, atlas_coords) };
-
-				if (tile == Ref<Tile>()) {
-					continue;
-				}
-
-				const int64_t tile_i{ tile->tile };
-				const DugAction dug_action{ tile_dug_action[tile_i] };
-
-				if (dug_action == DugAction::PASS || dig_power < tile->hardness) {
-					continue;
-				}
-				else if (dug_action == DugAction::SET_DUG) {
-					background_layer->set_cell(w_gpos, 0, dug_atlas_coord);
-				}
-
-				if (layer != background_layer) {
-					layer->set_cell(w_gpos);
-				}
-				
-				try_foreground(tile, w_gpos);
-
-				if (tile->particle != -1) {
-					// do particle effect
-				}
-			}
+			dig_gpos(Vector2i{ x, y }, dig_power);
 		}
 	}
 }
